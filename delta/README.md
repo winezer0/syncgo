@@ -6,7 +6,7 @@
 
 **Go implementation of the rsync delta-transfer algorithm** — with AVX2/AVX-512 accelerated MD5 (8-way + 16-way SIMD). Rolling checksum matching, block signature generation, file reconstruction, and a binary wire protocol.
 
-Built to power [Shuttle](https://github.com/henryborner/shuttle), my own Windows-native file sync tool — this library was extracted from Shuttle and is its core delta-transfer engine.
+Built to power [Shuttle](https://github.com/henryborner/shuttle)), my own Windows-native file sync tool — this library was extracted from syncgo and is its core delta-transfer engine.
 
 ## Features
 
@@ -150,4 +150,4 @@ go test -bench='BenchmarkSignature$|BenchmarkMD5x8_Bulk|BenchmarkChecksum1' -ben
 - [rsync](https://github.com/WayneD/rsync) — the original C implementation
 - [md5-simd](https://github.com/minio/md5-simd) — MinIO's AVX2/AVX-512 MD5 (multi-stream server use case)
 - [md5vec](https://github.com/igneous-systems/md5vec) — first Go AVX2 8-way MD5 (2018, unmaintained)
-- [Shuttle](https://github.com/henryborner/shuttle) — Windows sync tool using this library
+- [Shuttle](https://github.com/henryborner/shuttle)) — Windows sync tool using this library

@@ -16,9 +16,9 @@ import (
 
 func sshClient(t *testing.T) *ssh.Client {
 	t.Helper()
-	host := os.Getenv("SHUTTLE_TEST_HOST")
+	host := os.Getenv("SYNCGO_TEST_HOST")
 	if host == "" {
-		t.Skip("SHUTTLE_TEST_HOST not set")
+		t.Skip("SYNCGO_TEST_HOST not set")
 	}
 	home, _ := os.UserHomeDir()
 	keyPath := filepath.Join(home, ".ssh", "id_ed25519")
@@ -45,7 +45,7 @@ func sshClient(t *testing.T) *ssh.Client {
 func TestE2EDeltaSmall(t *testing.T) {
 	client := sshClient(t)
 	defer client.Close()
-	runDeltaTest(t, client, "/tmp/shuttle_e2e_small.txt",
+	runDeltaTest(t, client, "/tmp/syncgo_e2e_small.txt",
 		"Line 1\nLine 2 unchanged\nLine 3 original\n",
 		"Line 1\nLine 2 unchanged\nLine 3 MODIFIED!\n")
 }
@@ -64,19 +64,19 @@ func TestE2EDeltaLarge(t *testing.T) {
 	// write to remote
 	s, _ := client.NewSession()
 	s.Stdin = bytes.NewReader(oldData)
-	s.Run("cat > /tmp/shuttle_e2e_large.dat")
+	s.Run("cat > /tmp/syncgo_e2e_large.dat")
 	s.Close()
 
 	// new file: insert data in the middle
 	newData := make([]byte, len(oldData)+2048)
 	copy(newData, oldData[:len(oldData)/2])
-	insert := []byte("[[[SHUTTLE DELTA INSERTED DATA]]]")
+	insert := []byte("[[[syncgo DELTA INSERTED DATA]]]")
 	copy(newData[len(oldData)/2:], insert)
 	copy(newData[len(oldData)/2+len(insert):], oldData[len(oldData)/2:])
 
 	t.Logf("old: %d, new: %d, inserted: %d bytes", len(oldData), len(newData), len(insert))
 
-	sent, saved := doDelta(t, client, "/tmp/shuttle_e2e_large.dat", newData)
+	sent, saved := doDelta(t, client, "/tmp/syncgo_e2e_large.dat", newData)
 
 	t.Logf("━━━━━━━━━━━━━━━━━━━━━━")
 	t.Logf("  delta transfer complete")
@@ -85,7 +85,7 @@ func TestE2EDeltaLarge(t *testing.T) {
 	t.Logf("   saved:  %.1f KB (%.1f%%)", float64(saved)/1024, float64(saved)/float64(len(newData))*100)
 	t.Logf("━━━━━━━━━━━━━━━━━━━━━━")
 
-	cleanup(t, client, "/tmp/shuttle_e2e_large.dat")
+	cleanup(t, client, "/tmp/syncgo_e2e_large.dat")
 }
 
 func runDeltaTest(t *testing.T, client *ssh.Client, path, old, new string) {
@@ -102,7 +102,7 @@ func doDelta(t *testing.T, client *ssh.Client, path string, newData []byte) (sen
 	stdin, _ := session.StdinPipe()
 	stdout, _ := session.StdoutPipe()
 	stderr, _ := session.StderrPipe()
-	session.Start("A=/usr/local/bin/shuttle; [ -x \"$A\" ] || A=$HOME/.local/bin/shuttle; exec \"$A\" receive '" + strings.ReplaceAll(path, "'", "'\\''") + "'")
+	session.Start("A=/usr/local/bin/syncgo; [ -x \"$A\" ] || A=$HOME/.local/bin/syncgo; exec \"$A\" receive '" + strings.ReplaceAll(path, "'", "'\\''") + "'")
 
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {

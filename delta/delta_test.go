@@ -246,8 +246,8 @@ func BenchmarkSignatureXXH64(b *testing.B) {
 	}
 }
 
-// BenchmarkSignatureReader measures the streaming reader path (used by shuttle).
-// Tests md5 with AVX2 across typical shuttle block sizes.
+// BenchmarkSignatureReader measures the streaming reader path (used by syncgo).
+// Tests md5 with AVX2 across typical syncgo block sizes.
 func BenchmarkSignatureReader(b *testing.B) {
 	sizes := []struct {
 		name string

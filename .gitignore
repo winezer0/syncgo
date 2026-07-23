@@ -11,11 +11,11 @@
 .idea/
 .vscode/
 /rsync/
-shuttle_linux
+syncgo_linux
 syncd.yaml
 testdata/
 Thumbs.db
 docs/juejin-avx2-article.md
-shuttle.exe
-shuttle_linux
+syncgo.exe
+syncgo_linux
 .env

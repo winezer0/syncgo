@@ -1,6 +1,6 @@
-// deploy_agent.go — Deploy shuttle agent to remote Linux server.
+// deploy_agent.go — Deploy syncgo agent to remote Linux server.
 // Strategy: local pre-built binary → GitHub Release download → cross-compile.
-// deploy_agent.go — 部署 shuttle agent 到远端 Linux 服务器。
+// deploy_agent.go — 部署 syncgo agent 到远端 Linux 服务器。
 // 策略：本地预构建二进制 → GitHub Release 下载 → 交叉编译。
 package main
 
@@ -24,25 +24,25 @@ import (
 func init() {
 	deployCmd := &cobra.Command{
 		Use:   "deploy-agent <server name>",
-		Short: "Deploy shuttle agent to a remote Linux server",
-		Long: `Deploy the shuttle agent binary to the remote server via SFTP.
+		Short: "Deploy syncgo agent to a remote Linux server",
+		Long: `Deploy the syncgo agent binary to the remote server via SFTP.
 
 The agent enables rsync-style delta transfers: only changed portions
 of files are sent over the network instead of full file content.
 
 Agent binary resolution order:
-  1. Local file: shuttle_linux_<arch> in the program directory
+  1. Local file: syncgo_linux_<arch> in the program directory
   2. Download from GitHub Releases (v` + versionStr + `)
   3. Cross-compile from source (requires local Go toolchain)
 
 Steps performed:
   1. Connect to the server and detect CPU architecture (uname -m)
   2. Resolve agent binary (local → release → build)
-  3. Upload the binary to ~/.local/bin/shuttle on the server
+  3. Upload the binary to ~/.local/bin/syncgo on the server
   4. Set executable permissions (chmod +x)
-  5. Verify by running 'shuttle version' on the remote
+  5. Verify by running 'syncgo version' on the remote
 
-After deployment, 'shuttle push' will automatically use delta
+After deployment, 'syncgo push' will automatically use delta
 transfers for updated files, significantly reducing bandwidth usage.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runDeployAgent,
@@ -111,7 +111,7 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 
 	// 4. Upload to remote
 	remoteDir := ".local/bin"
-	remotePath := remoteDir + "/shuttle"
+	remotePath := remoteDir + "/syncgo"
 	fmt.Printf("  Uploading to %s:%s ...\n", server.Host, remotePath)
 
 	tr.MkdirAll(remoteDir)
@@ -155,7 +155,7 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Println("\n  Agent deployed but cannot execute.")
 			fmt.Println("  Possible causes: wrong architecture, missing permissions, or PATH issue.")
-			fmt.Printf("  Try manually: export PATH=\"$HOME/.local/bin:$PATH\" && shuttle version\n")
+			fmt.Printf("  Try manually: export PATH=\"$HOME/.local/bin:$PATH\" && syncgo version\n")
 		}
 		return
 	}
@@ -164,7 +164,7 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 }
 
 // resolveAgentBinary resolves the agent binary using three-level fallback:
-// 1. Local pre-built file (shuttle_linux_<arch> in exe directory)
+// 1. Local pre-built file (syncgo_linux_<arch> in exe directory)
 // 2. Download from GitHub Releases
 // 3. Cross-compile from source
 // Returns: (path, cleanupFunc, error). cleanupFunc may be nil for local files.
@@ -175,7 +175,7 @@ func resolveAgentBinary(goArch string) (string, func(), error) {
 		fmt.Printf("  [1/3] Found local agent: %s\n", local)
 		return local, nil, nil
 	}
-	fmt.Printf("  [1/3] Local agent not found (shuttle_linux_%s), trying release...\n", goArch)
+	fmt.Printf("  [1/3] Local agent not found (syncgo_linux_%s), trying release...\n", goArch)
 
 	// Level 2: download from GitHub Releases
 	downloaded, err := downloadFromRelease(goArch)
@@ -195,10 +195,10 @@ func resolveAgentBinary(goArch string) (string, func(), error) {
 }
 
 // findLocalAgent looks for a pre-built agent binary in the executable's directory.
-// Naming convention: shuttle_linux_<arch> (e.g. shuttle_linux_amd64, shuttle_linux_arm64).
+// Naming convention: syncgo_linux_<arch> (e.g. syncgo_linux_amd64, syncgo_linux_arm64).
 // findLocalAgent 在可执行文件目录下查找预构建的 agent 二进制。
 func findLocalAgent(goArch string) string {
-	name := "shuttle_linux_" + goArch
+	name := "syncgo_linux_" + goArch
 
 	// Try executable directory first
 	if exe, err := os.Executable(); err == nil {
@@ -220,10 +220,10 @@ func findLocalAgent(goArch string) string {
 }
 
 // downloadFromRelease downloads the agent binary from GitHub Releases.
-// URL pattern: https://github.com/winezer0/syncgo/releases/download/v<version>/shuttle_linux_<arch>
+// URL pattern: https://github.com/winezer0/syncgo/releases/download/v<version>/syncgo_linux_<arch>
 // downloadFromRelease 从 GitHub Releases 下载 agent 二进制。
 func downloadFromRelease(goArch string) (string, error) {
-	fileName := "shuttle_linux_" + goArch
+	fileName := "syncgo_linux_" + goArch
 	url := fmt.Sprintf("https://github.com/winezer0/syncgo/releases/download/v%s/%s", versionStr, fileName)
 
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -238,7 +238,7 @@ func downloadFromRelease(goArch string) (string, error) {
 	}
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "shuttle_agent_*")
+	tmpFile, err := os.CreateTemp("", "syncgo_agent_*")
 	if err != nil {
 		return "", err
 	}
@@ -285,7 +285,7 @@ func unameToGoArch(uname string) string {
 	}
 }
 
-// crossCompile builds the shuttle binary for linux/<goArch>.
+// crossCompile builds the syncgo binary for linux/<goArch>.
 // Returns the path to the temporary binary file.
 func crossCompile(goArch string) (string, error) {
 	// Find the project root (where go.mod is)
@@ -295,15 +295,15 @@ func crossCompile(goArch string) (string, error) {
 	}
 
 	// Create temp output file
-	tmpFile, err := os.CreateTemp("", "shuttle_linux_*")
+	tmpFile, err := os.CreateTemp("", "syncgo_linux_*")
 	if err != nil {
 		return "", err
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 
-	// Cross-compile: GOOS=linux GOARCH=<arch> go build -o <tmp> ./cmd/shuttle
-	buildCmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", tmpPath, "./cmd/shuttle")
+	// Cross-compile: GOOS=linux GOARCH=<arch> go build -o <tmp> ./cmd/syncgo
+	buildCmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", tmpPath, "./cmd/syncgo")
 	buildCmd.Dir = projectRoot
 	buildCmd.Env = append(os.Environ(),
 		"GOOS=linux",
@@ -362,16 +362,16 @@ func ensurePath(tr *transport.SFTPTransport, dir string) {
 	tr.ExecOutput(checkCmd)
 }
 
-// verifyAgent runs 'shuttle version' on the remote to confirm the binary can execute.
-// verifyAgent 在远端执行 'shuttle version' 确认二进制可正常运行。
+// verifyAgent runs 'syncgo version' on the remote to confirm the binary can execute.
+// verifyAgent 在远端执行 'syncgo version' 确认二进制可正常运行。
 func verifyAgent(tr *transport.SFTPTransport) (string, error) {
-	cmd := "$HOME/.local/bin/shuttle version"
+	cmd := "$HOME/.local/bin/syncgo version"
 	output, err := tr.ExecOutput(cmd)
 	if err != nil {
 		return "", fmt.Errorf("remote exec: %w", err)
 	}
 	if output == "" {
-		return "", fmt.Errorf("no output from remote shuttle")
+		return "", fmt.Errorf("no output from remote syncgo")
 	}
 	// Return first line of version output
 	lines := strings.SplitN(output, "\n", 2)

@@ -22,14 +22,14 @@ import (
 	"github.com/winezer0/syncgo/delta"
 )
 
-// cacheDir returns the signature cache directory (~/.shuttle_cache/).
+// cacheDir returns the signature cache directory (~/.syncgo_cache/).
 // cacheDir 返回签名缓存目录。
 func cacheDir() string {
 	home, _ := os.UserHomeDir()
 	if home == "" {
 		home = "/tmp"
 	}
-	return filepath.Join(home, ".shuttle_cache")
+	return filepath.Join(home, ".syncgo_cache")
 }
 
 // cacheLoad tries to load a cached signature for the given file.
@@ -154,7 +154,7 @@ func runReceive(cmd *cobra.Command, args []string) {
 
 	// 4. Stream-read instructions from stdin → write directly to temp file (low memory).
 	// 4. 从 stdin 流式读取指令 → 直接写临时文件（低内存）。
-	tmpPath := filePath + ".shuttle_tmp"
+	tmpPath := filePath + ".syncgo_tmp"
 	out, err := os.Create(tmpPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 创建临时文件失败: %v\n", err)

@@ -45,7 +45,7 @@ type SyncStats struct {
 type SyncEngine struct {
 	transport    Transport
 	hook         SyncHook
-	agentPath    string // cached remote shuttle binary path / 缓存的远端 shuttle 路径
+	agentPath    string // cached remote syncgo binary path / 缓存的远端 syncgo 路径
 	agentChecked bool   // whether agent detection has been done / 是否已检测过 agent
 }
 
@@ -55,9 +55,9 @@ func NewSyncEngine(tr Transport) *SyncEngine {
 
 func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 
-// detectAgentPath finds the shuttle binary on the remote server.
+// detectAgentPath finds the syncgo binary on the remote server.
 // Tries PATH first, then common install locations.
-// detectAgentPath 探测远端 shuttle 二进制路径。优先 PATH，其次常见安装位置。
+// detectAgentPath 探测远端 syncgo 二进制路径。优先 PATH，其次常见安装位置。
 func (e *SyncEngine) detectAgentPath() string {
 	if e.agentChecked {
 		return e.agentPath
@@ -65,7 +65,7 @@ func (e *SyncEngine) detectAgentPath() string {
 	e.agentChecked = true
 
 	// Single command that tries PATH then common locations
-	cmd := "command -v shuttle 2>/dev/null || (test -x $HOME/.local/bin/shuttle && echo $HOME/.local/bin/shuttle) || (test -x /usr/local/bin/shuttle && echo /usr/local/bin/shuttle) || true"
+	cmd := "command -v syncgo 2>/dev/null || (test -x $HOME/.local/bin/syncgo && echo $HOME/.local/bin/syncgo) || (test -x /usr/local/bin/syncgo && echo /usr/local/bin/syncgo) || true"
 	out, err := e.transport.ExecOutput(cmd)
 	if err == nil && out != "" {
 		e.agentPath = out
@@ -411,19 +411,19 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // delta match → push instructions. Uses goroutines to read local file and remote
 // signature in parallel to shorten pipeline latency. Large files use mmap to avoid
 // loading entirely into memory; falls back to ReadFile on mmap failure.
-// If delta fails (e.g. no shuttle on remote), automatically falls back to full upload.
+// If delta fails (e.g. no syncgo on remote), automatically falls back to full upload.
 //
 // uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
-// 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
+// 若增量流程失败（远端无 syncgo 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	// Detect remote agent path (cached after first call)
 	agentBin := e.detectAgentPath()
 	if agentBin == "" {
 		// No agent on remote, fallback to full upload.
 		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta unavailable: no shuttle agent on remote")
+		return info.Size, 0, fmt.Errorf("delta unavailable: no syncgo agent on remote")
 	}
 
 	algo := delta.GetDefault()

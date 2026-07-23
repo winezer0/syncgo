@@ -32,7 +32,7 @@ type testResultMsg struct {
 	ok       bool
 	msg      string
 	osName   string
-	hasAgent bool // shuttle binary found on remote
+	hasAgent bool // syncgo binary found on remote
 }
 
 // deployResultMsg is the async deploy result message.
@@ -60,7 +60,7 @@ type serversModel struct {
 	testStatus testStatus
 	testMsg    string
 	deployed   bool
-	hasAgent   bool // shuttle binary exists on remote
+	hasAgent   bool // syncgo binary exists on remote
 	// protect editing
 	protectMode     bool
 	protectCursor   int
@@ -318,10 +318,10 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 		if err != nil {
 			return testResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.os_err"), err)}
 		}
-		// Check if shuttle binary exists on remote
+		// Check if syncgo binary exists on remote
 		hasAgent := false
 		if s2, err := client.NewSession(); err == nil {
-			_, err := s2.Output("shuttle version")
+			_, err := s2.Output("syncgo version")
 			hasAgent = (err == nil)
 			s2.Close()
 		}
@@ -350,10 +350,10 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 		defer client.Close()
 
 		exePath, _ := os.Executable()
-		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
+		localBin := filepath.Join(filepath.Dir(exePath), "syncgo_linux")
 		if _, err := os.Stat(localBin); os.IsNotExist(err) {
 			// go run 可能不在项目目录，fallback 当前工作目录
-			localBin = "shuttle_linux"
+			localBin = "syncgo_linux"
 		}
 		if _, err := os.Stat(localBin); os.IsNotExist(err) {
 			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
@@ -368,8 +368,8 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 			path string
 			cmd  string
 		}{
-			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
-			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
+			{"/usr/local/bin/syncgo", "cat > /usr/local/bin/syncgo && chmod +x /usr/local/bin/syncgo"},
+			{"$HOME/syncgo", "cat > $HOME/syncgo && chmod +x $HOME/syncgo && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
 		}
 
 		var lastErr error
@@ -597,7 +597,7 @@ func removeTasksForServer(cfg *config.Config, serverName string) {
 	cfg.Tasks = filtered
 }
 
-// asyncUpdateAgent deploys shuttle_linux to the given server (standalone, no form needed).
+// asyncUpdateAgent deploys syncgo_linux to the given server (standalone, no form needed).
 func asyncUpdateAgent(srv config.Server) tea.Cmd {
 	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
 	if len(authMethods) == 0 {
@@ -621,9 +621,9 @@ func asyncUpdateAgent(srv config.Server) tea.Cmd {
 		defer client.Close()
 
 		exePath, _ := os.Executable()
-		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
+		localBin := filepath.Join(filepath.Dir(exePath), "syncgo_linux")
 		if _, err := os.Stat(localBin); os.IsNotExist(err) {
-			localBin = "shuttle_linux"
+			localBin = "syncgo_linux"
 		}
 		if _, err := os.Stat(localBin); os.IsNotExist(err) {
 			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
@@ -637,8 +637,8 @@ func asyncUpdateAgent(srv config.Server) tea.Cmd {
 			path string
 			cmd  string
 		}{
-			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
-			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
+			{"/usr/local/bin/syncgo", "cat > /usr/local/bin/syncgo && chmod +x /usr/local/bin/syncgo"},
+			{"$HOME/syncgo", "cat > $HOME/syncgo && chmod +x $HOME/syncgo && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
 		}
 
 		for _, dp := range deployPaths {
@@ -796,7 +796,7 @@ func (m *serversModel) protectView(width, height int) string {
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
-// tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
+// tryRemoveRemoteAgent attempts to SSH into the server and remove the syncgo binary.
 func tryRemoveRemoteAgent(srv config.Server) {
 	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
 	if len(authMethods) == 0 {
@@ -814,7 +814,7 @@ func tryRemoveRemoteAgent(srv config.Server) {
 	defer client.Close()
 	session, _ := client.NewSession()
 	if session != nil {
-		session.Run("rm -f /usr/local/bin/shuttle ~/shuttle")
+		session.Run("rm -f /usr/local/bin/syncgo ~/syncgo")
 		session.Close()
 	}
 }

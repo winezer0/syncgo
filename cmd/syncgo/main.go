@@ -1,6 +1,5 @@
-// main.go — Shuttle CLI entry point (Cobra)
-// main.go — Shuttle CLI entry point (Cobra)
-// main.go — Shuttle CLI 入口 (Cobra)
+// main.go — SyncGo CLI entry point (Cobra)
+// main.go — SyncGo CLI 入口 (Cobra)
 package main
 
 import (
@@ -24,11 +23,11 @@ var (
 	algoName   string
 	schemaFlag bool
 
-	versionStr = "0.0.1"
+	versionStr = "0.0.2"
 	rootCmd    = &cobra.Command{
-		Use:   "shuttle",
+		Use:   "syncgo",
 		Short: "Incremental file sync over SSH",
-		Long: `Shuttle syncs local directories to remote Linux servers over SSH.
+		Long: `SyncGo syncs local directories to remote Linux servers over SSH.
 
 It compares source and target using the rsync delta algorithm:
 files that exist on both sides transfer only a checksum signature
@@ -40,10 +39,10 @@ syncd.yaml config file. A terminal UI (TUI) is also available for
 interactive management.
 
 Getting started:
-  shuttle init                 create a config template
-  shuttle config --schema      full field reference with examples
-  shuttle push                 run all sync tasks
-  shuttle exec <server> "cmd"  run a remote SSH command`,
+  syncgo init                 create a config template
+  syncgo config --schema      full field reference with examples
+  syncgo push                 run all sync tasks
+  syncgo exec <server> "cmd"  run a remote SSH command`,
 		Version: versionStr,
 	}
 )
@@ -68,9 +67,9 @@ SSH, compares local and remote files, and transfers only the
 differences (delta).
 
 Quick reference:
-  Shuttle detects folder vs file from the filesystem, not from trailing
+  SyncGo detects folder vs file from the filesystem, not from trailing
   slashes (unlike rsync).  Trailing \ or / is purely a visual convention.
-  See 'shuttle config --schema' for the complete field reference.`,
+  See 'syncgo config --schema' for the complete field reference.`,
 		Run: runPush,
 	}
 	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
@@ -140,9 +139,9 @@ both folder syncs (website deployment) and single-file syncs
 
 Next steps:
   Edit syncd.yaml to set your server and task
-  shuttle config --schema   view all available fields
-  shuttle test <server>     verify SSH connectivity
-  shuttle push --dry-run    preview what will be transferred`,
+  syncgo config --schema   view all available fields
+  syncgo test <server>     verify SSH connectivity
+  syncgo push --dry-run    preview what will be transferred`,
 		Run: runInit,
 	})
 
@@ -150,7 +149,7 @@ Next steps:
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print version, Go runtime, and available checksum algorithms",
-		Long:  `Display the Shuttle version, Go compiler version, target OS/arch, and the list of supported strong checksum algorithms.`,
+		Long:  `Display the SyncGo version, Go compiler version, target OS/arch, and the list of supported strong checksum algorithms.`,
 		Run:   runVersion,
 	})
 
@@ -160,7 +159,7 @@ Next steps:
 }
 
 func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Printf("Shuttle v%s\n", versionStr)
+	fmt.Printf("SyncGo v%s\n", versionStr)
 	fmt.Printf("  Go:     %s\n", runtime.Version())
 	fmt.Printf("  OS:     %s\n", runtime.GOOS)
 	fmt.Printf("  Arch:   %s\n", runtime.GOARCH)
@@ -184,7 +183,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load("syncd.yaml")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config found: %v\n", err)
-		fmt.Println("Run 'shuttle init' to create one.")
+		fmt.Println("Run 'syncgo init' to create one.")
 		return
 	}
 	fmt.Printf("Config: syncd.yaml  (version %s)\n", cfg.Version)
@@ -295,7 +294,7 @@ Task
 ────────────────────────
   name       string    Task name
   source     string    Local source path.
-                       Shuttle detects folder vs file from the filesystem (os.Stat),
+                       SyncGo detects folder vs file from the filesystem (os.Stat),
                        not from a trailing slash.  The trailing \ or / is a visual
                        convention — it has no effect on behavior.
                        ── Folder ──
@@ -310,10 +309,10 @@ Task
                          Examples:
                            E:\configs\nginx.conf
                            /etc/myapp/config.yaml
-                       ⚠ Unlike rsync, shuttle ignores trailing slashes.
+                       ⚠ Unlike rsync, syncgo ignores trailing slashes.
                        E:\dist\ and E:\dist behave identically.
   target     string    Remote target, format: <server name>:<path>
-                       Shuttle joins target + relative path.  Trailing / has no
+                       SyncGo joins target + relative path.  Trailing / has no
                        special meaning — filepath.Join handles both forms the same.
                        ── Folder sync ──
                          Example: myserver:/var/www/html/
@@ -421,15 +420,15 @@ Examples
 
 Usage
 ────────────────────────
-  View current config:    shuttle config
-  Show this reference:    shuttle config --schema
-  Generate a template:    shuttle init
-  Run sync tasks:         shuttle push [task] [--dry-run]
-  Test SSH connection:    shuttle test <server>
-  Deploy delta agent:     shuttle deploy-agent <server>
-  Run remote command:     shuttle exec <server> "command"
-  Run on all servers:     shuttle exec --all "command"
-  Command from file:      shuttle exec <server> --file script.sh`)
+  View current config:    syncgo config
+  Show this reference:    syncgo config --schema
+  Generate a template:    syncgo init
+  Run sync tasks:         syncgo push [task] [--dry-run]
+  Test SSH connection:    syncgo test <server>
+  Deploy delta agent:     syncgo deploy-agent <server>
+  Run remote command:     syncgo exec <server> "command"
+  Run on all servers:     syncgo exec --all "command"
+  Command from file:      syncgo exec <server> --file script.sh`)
 }
 
 func runInit(cmd *cobra.Command, args []string) {
@@ -438,13 +437,13 @@ func runInit(cmd *cobra.Command, args []string) {
 		return
 	}
 	os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
-	fmt.Println("Created syncd.yaml — edit it and run 'shuttle push'")
-	fmt.Println("Run 'shuttle config --schema' for a full field reference.")
+	fmt.Println("Created syncd.yaml — edit it and run 'syncgo push'")
+	fmt.Println("Run 'syncgo config --schema' for a full field reference.")
 }
 
-const initTemplate = `# Shuttle 同步配置文件
-# 用法: shuttle push [任务名]
-# 完整参考: shuttle config --schema
+const initTemplate = `# SyncGo 同步配置文件
+# 用法: syncgo push [任务名]
+# 完整参考: syncgo config --schema
 
 version: "1.0"
 language: zh               # en / zh

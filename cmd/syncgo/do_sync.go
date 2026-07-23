@@ -297,6 +297,6 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 	}
 
 	if dryRun {
-		fmt.Println("Dry run complete — use 'shuttle push' to sync")
+		fmt.Println("Dry run complete — use 'syncgo push' to sync")
 	}
 }

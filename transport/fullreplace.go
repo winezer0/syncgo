@@ -81,7 +81,7 @@ func (e *SyncEngine) SyncFullReplace(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	// 2. Upload archive to remote temp path
-	remoteTmp := fmt.Sprintf("/tmp/.shuttle_sync_%d.tar.gz", time.Now().UnixNano())
+	remoteTmp := fmt.Sprintf("/tmp/.syncgo_sync_%d.tar.gz", time.Now().UnixNano())
 	e.hook.OnFileStart(filepath.Base(tmpArchive), totalSize)
 
 	archiveFile, err := os.Open(tmpArchive)
@@ -155,7 +155,7 @@ func (e *SyncEngine) SyncFullReplace(opts SyncOptions) (*SyncStats, error) {
 // PackLocalTarGz 将本地源目录打包为 tar.gz 临时文件。
 // 返回临时文件路径、文件数量和未压缩总大小。
 func PackLocalTarGz(source string, excludes []string, skipDots, flat bool) (string, int, int64, error) {
-	tmpFile, err := os.CreateTemp("", "shuttle_sync_*.tar.gz")
+	tmpFile, err := os.CreateTemp("", "syncgo_sync_*.tar.gz")
 	if err != nil {
 		return "", 0, 0, err
 	}

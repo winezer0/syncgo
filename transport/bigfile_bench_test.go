@@ -43,7 +43,7 @@ func TestDeltaCost(t *testing.T) {
 	testFile := filepath.Join("..", "..", "testdata", "local", "bigfile.dat")
 	fi, err := os.Stat(testFile)
 	if err != nil {
-		t.Skipf("test file not found (run from shuttle/ dir): %v", err)
+		t.Skipf("test file not found (run from syncgo/ dir): %v", err)
 	}
 	sizeMB := float64(fi.Size()) / 1024 / 1024
 	fmt.Printf("\n  File: %s (%.0f MB)\n", testFile, sizeMB)

@@ -1,15 +1,15 @@
 [简体中文](README.md) | English
 
-# Shuttle — cross-platform rsync-style delta sync
+# syncgo — cross-platform rsync-style delta sync
 
-**Shuttle** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push. Ships with a built-in [`delta`](delta/) package (derived from [go-rsync](https://github.com/henryborner/go-rsync)) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
+**syncgo** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push. Ships with a built-in [`delta`](delta/) package (derived from [go-rsync](https://github.com/henryborner/go-rsync)) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
 
-> Original project: [Shuttle](https://github.com/henryborner/shuttle)
+> Original project: [shuttle](https://github.com/henryborner/shuttle)
 
 ```powershell
-shuttle                    # double-click to launch TUI
-shuttle push web           # sync a task
-shuttle exec vps "uptime"  # run remote command
+syncgo                    # double-click to launch TUI
+syncgo push web           # sync a task
+syncgo exec vps "uptime"  # run remote command
 ```
 
 ## Features
@@ -19,8 +19,8 @@ shuttle exec vps "uptime"  # run remote command
 - **Dual sync modes** — `overlay` (incremental) / `full_replace` (tar.gz pack & replace)
 - **Delta transfer** — rsync algorithm, only changed blocks are transmitted
 - **Task Hooks** — Run remote commands before/after sync (stop/start services, clear cache)
-- **Remote exec** — `shuttle exec` for standalone SSH commands, no sync task needed
-- **Agent auto-deploy** — `shuttle deploy-agent` with three-level fallback (local file → release download → cross-compile) + remote execution verification
+- **Remote exec** — `syncgo exec` for standalone SSH commands, no sync task needed
+- **Agent auto-deploy** — `syncgo deploy-agent` with three-level fallback (local file → release download → cross-compile) + remote execution verification
 - **Auth** — password if configured, key_file if configured, otherwise auto-detects ~/.ssh keys
 - **Retry policy** — Configurable max retries and delay for transient failures
 - **Incremental toggle** — Global + per-task incremental switch
@@ -38,8 +38,8 @@ shuttle exec vps "uptime"  # run remote command
 
 Download the binary for your platform from [Releases](https://github.com/winezer0/syncgo/releases):
 
-- **`shuttle.exe`** — Windows main program
-- **`shuttle_linux`** — Linux remote agent (deployed via `deploy-agent` or TUI)
+- **`syncgo.exe`** — Windows main program
+- **`syncgo_linux`** — Linux remote agent (deployed via `deploy-agent` or TUI)
 
 ### Build from Source
 
@@ -50,11 +50,11 @@ git clone https://github.com/winezer0/syncgo.git
 cd syncgo
 
 # Native platform
-CGO_ENABLED=0 go build -o shuttle ./cmd/shuttle
+CGO_ENABLED=0 go build -o syncgo ./cmd/syncgo
 
 # Cross-compile examples
-CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o shuttle_linux  ./cmd/shuttle
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o shuttle_mac    ./cmd/shuttle
+CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o syncgo_linux  ./cmd/syncgo
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o syncgo_mac    ./cmd/syncgo
 ```
 
 Supported targets: `windows`, `darwin`, `linux` × `amd64`, `arm64` (`deploy-agent` additionally supports `arm`/`386`/`riscv64` for remote agents).
@@ -62,20 +62,20 @@ Supported targets: `windows`, `darwin`, `linux` × `amd64`, `arm64` (`deploy-age
 ## Quick Start
 
 ```powershell
-.\shuttle.exe                        # double-click for TUI
-.\shuttle.exe tui                    # TUI from terminal
-.\shuttle.exe init                   # generate config template
-.\shuttle.exe list                   # list tasks & servers
-.\shuttle.exe test myserver          # test SSH connection
-.\shuttle.exe push web               # sync
-.\shuttle.exe push --dry-run         # preview changes
-.\shuttle.exe deploy-agent myserver  # deploy remote delta agent
-.\shuttle.exe exec myserver "df -h"  # run remote command
-.\shuttle.exe exec --all "uptime"    # run on all servers
-.\shuttle.exe version                # version info
+.\syncgo.exe                        # double-click for TUI
+.\syncgo.exe tui                    # TUI from terminal
+.\syncgo.exe init                   # generate config template
+.\syncgo.exe list                   # list tasks & servers
+.\syncgo.exe test myserver          # test SSH connection
+.\syncgo.exe push web               # sync
+.\syncgo.exe push --dry-run         # preview changes
+.\syncgo.exe deploy-agent myserver  # deploy remote delta agent
+.\syncgo.exe exec myserver "df -h"  # run remote command
+.\syncgo.exe exec --all "uptime"    # run on all servers
+.\syncgo.exe version                # version info
 ```
 
-> Double-click `shuttle.exe` to enter TUI and create config — no manual YAML editing needed.
+> Double-click `syncgo.exe` to enter TUI and create config — no manual YAML editing needed.
 
 ## Config
 
@@ -140,18 +140,18 @@ tasks:
 
 | Command | Description |
 |---------|-------------|
-| `shuttle` | Double-click for TUI |
-| `shuttle push [name]` | Sync tasks |
-| `shuttle list` | List all tasks and servers |
-| `shuttle config` | Config summary |
-| `shuttle config --schema` | Full field reference |
-| `shuttle test <server>` | Test SSH connection |
-| `shuttle init` | Generate config template |
-| `shuttle exec <server> "cmd"` | Run remote command |
-| `shuttle exec --all "cmd"` | Run on all servers |
-| `shuttle exec <server> --file script.sh` | Command from file |
-| `shuttle deploy-agent <server>` | Deploy remote delta agent |
-| `shuttle version` | Version info |
+| `syncgo` | Double-click for TUI |
+| `syncgo push [name]` | Sync tasks |
+| `syncgo list` | List all tasks and servers |
+| `syncgo config` | Config summary |
+| `syncgo config --schema` | Full field reference |
+| `syncgo test <server>` | Test SSH connection |
+| `syncgo init` | Generate config template |
+| `syncgo exec <server> "cmd"` | Run remote command |
+| `syncgo exec --all "cmd"` | Run on all servers |
+| `syncgo exec <server> --file script.sh` | Command from file |
+| `syncgo deploy-agent <server>` | Deploy remote delta agent |
+| `syncgo version` | Version info |
 
 ### push Flags
 
@@ -211,47 +211,47 @@ tasks:
 
 ```powershell
 # Single server
-shuttle exec vps "ls -la /var/www"
-shuttle exec vps "systemctl restart nginx"
-shuttle exec vps "df -h && free -m"
+syncgo exec vps "ls -la /var/www"
+syncgo exec vps "systemctl restart nginx"
+syncgo exec vps "df -h && free -m"
 
 # All servers
-shuttle exec --all "uptime"
+syncgo exec --all "uptime"
 
 # Command from file
-shuttle exec vps --file deploy.sh
+syncgo exec vps --file deploy.sh
 ```
 
 ## Agent Deployment
 
-`shuttle deploy-agent` automates remote delta agent deployment:
+`syncgo deploy-agent` automates remote delta agent deployment:
 
 ```powershell
-shuttle deploy-agent myserver
+syncgo deploy-agent myserver
 ```
 
 ### Agent = Main Binary
 
-The agent is **the same binary** as the main program (same source: `cmd/shuttle`). The remote only uses the `receive` subcommand for delta signature computation and file reconstruction, but the deployed binary contains all functionality.
+The agent is **the same binary** as the main program (same source: `cmd/syncgo`). The remote only uses the `receive` subcommand for delta signature computation and file reconstruction, but the deployed binary contains all functionality.
 
 ### Binary Resolution (Three-Level Fallback)
 
 | Priority | Source | Description |
 |----------|--------|-------------|
-| 1 | Local file | `shuttle_linux_<arch>` in the program directory (e.g. `shuttle_linux_amd64`) |
-| 2 | GitHub Releases | Auto-download `v<version>/shuttle_linux_<arch>` |
+| 1 | Local file | `syncgo_linux_<arch>` in the program directory (e.g. `syncgo_linux_amd64`) |
+| 2 | GitHub Releases | Auto-download `v<version>/syncgo_linux_<arch>` |
 | 3 | Cross-compile | Local `go build` (requires Go toolchain, `CGO_ENABLED=0` static build) |
 
-> Tip: Place pre-built `shuttle_linux_amd64` / `shuttle_linux_arm64` alongside `shuttle.exe` for offline deployment — no network or Go environment needed.
+> Tip: Place pre-built `syncgo_linux_amd64` / `syncgo_linux_arm64` alongside `syncgo.exe` for offline deployment — no network or Go environment needed.
 
 ### Steps Performed
 
 1. Connect and detect CPU architecture (`uname -m`)
 2. Resolve agent binary via three-level fallback
-3. Upload binary to `~/.local/bin/shuttle` via SFTP
+3. Upload binary to `~/.local/bin/syncgo` via SFTP
 4. Set executable permission (`chmod 0755`)
 5. Ensure `~/.local/bin` is in PATH
-6. **Execution verification** — run `shuttle version` on remote to confirm it works
+6. **Execution verification** — run `syncgo version` on remote to confirm it works
 7. **Shared library diagnostics** — if execution fails, auto-run `ldd` to detect missing `.so` files and suggest fixes
 
 ### Verification Failure Example
@@ -269,11 +269,11 @@ The agent is **the same binary** as the main program (same source: `cmd/shuttle`
 
 > Binaries built with `CGO_ENABLED=0` are fully statically linked with no `.so` dependencies. This diagnostic primarily guards against manually placed dynamically-linked binaries.
 
-After deployment, `shuttle push` automatically uses delta transfers.
+After deployment, `syncgo push` automatically uses delta transfers.
 
 ## Library Usage (Go SDK)
 
-Shuttle can be embedded as a Go library:
+syncgo can be embedded as a Go library:
 
 ```go
 import "github.com/winezer0/syncgo/syncer"
@@ -374,7 +374,7 @@ No agent       → automatic fallback to full SFTP upload
 
 ### Signature Cache
 
-The remote agent caches block signatures in `~/.shuttle_cache/`. When a file hasn't changed, the cached signature is returned without reading the file from disk — significantly speeding up repeat syncs.
+The remote agent caches block signatures in `~/.syncgo_cache/`. When a file hasn't changed, the cached signature is returned without reading the file from disk — significantly speeding up repeat syncs.
 
 ### Wire Protocol
 

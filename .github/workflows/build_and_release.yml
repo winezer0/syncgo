@@ -19,22 +19,22 @@ jobs:
         include:
           - goos: windows
             goarch: amd64
-            artifact-name: shuttle_windows_amd64.exe
+            artifact-name: syncgo_windows_amd64.exe
           - goos: windows
             goarch: arm64
-            artifact-name: shuttle_windows_arm64.exe
+            artifact-name: syncgo_windows_arm64.exe
           - goos: linux
             goarch: amd64
-            artifact-name: shuttle_linux_amd64
+            artifact-name: syncgo_linux_amd64
           - goos: linux
             goarch: arm64
-            artifact-name: shuttle_linux_arm64
+            artifact-name: syncgo_linux_arm64
           - goos: darwin
             goarch: amd64
-            artifact-name: shuttle_darwin_amd64
+            artifact-name: syncgo_darwin_amd64
           - goos: darwin
             goarch: arm64
-            artifact-name: shuttle_darwin_arm64
+            artifact-name: syncgo_darwin_arm64
 
     steps:
       - name: Checkout code
@@ -71,7 +71,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           go build -ldflags="-s -w -X main.versionStr=${{ steps.version.outputs.ver }}" \
-            -o ${{ matrix.artifact-name }} ./cmd/shuttle
+            -o ${{ matrix.artifact-name }} ./cmd/syncgo
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -114,9 +114,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.ver }}
-          name: Shuttle v${{ steps.version.outputs.ver }}
+          name: SyncGo v${{ steps.version.outputs.ver }}
           body: |
-            ## Shuttle v${{ steps.version.outputs.ver }}
+            ## SyncGo v${{ steps.version.outputs.ver }}
 
             跨平台增量文件同步工具 — rsync delta 算法，仅传输文件变化部分。
 
@@ -129,34 +129,34 @@ jobs:
 
             | 文件 | 平台 | 用途 |
             |------|------|------|
-            | `shuttle_windows_amd64.exe` | Windows x64 | 主程序 |
-            | `shuttle_windows_arm64.exe` | Windows ARM64 | 主程序 |
-            | `shuttle_linux_amd64` | Linux x64 | 主程序 / 远端 Agent |
-            | `shuttle_linux_arm64` | Linux ARM64 | 主程序 / 远端 Agent |
-            | `shuttle_darwin_amd64` | macOS Intel | 主程序 |
-            | `shuttle_darwin_arm64` | macOS Apple Silicon | 主程序 |
+            | `syncgo_windows_amd64.exe` | Windows x64 | 主程序 |
+            | `syncgo_windows_arm64.exe` | Windows ARM64 | 主程序 |
+            | `syncgo_linux_amd64` | Linux x64 | 主程序 / 远端 Agent |
+            | `syncgo_linux_arm64` | Linux ARM64 | 主程序 / 远端 Agent |
+            | `syncgo_darwin_amd64` | macOS Intel | 主程序 |
+            | `syncgo_darwin_arm64` | macOS Apple Silicon | 主程序 |
 
             ### Agent 部署
 
             Linux 二进制可直接作为远端 delta agent 使用：
             ```bash
             # 方式1: 自动部署（推荐）
-            shuttle deploy-agent <server>
+            syncgo deploy-agent <server>
 
             # 方式2: 手动放置
-            # 将 shuttle_linux_<arch> 放在 shuttle.exe 同级目录
+            # 将 syncgo_linux_<arch> 放在 syncgo.exe 同级目录
             # deploy-agent 会自动识别并上传
             ```
 
             ### 校验和算法
             支持 xxh64（默认）/ xxh3 / md5 / sha256，amd64 平台含 SIMD 加速。
           files: |
-            ./artifacts/shuttle_windows_amd64.exe/shuttle_windows_amd64.exe
-            ./artifacts/shuttle_windows_arm64.exe/shuttle_windows_arm64.exe
-            ./artifacts/shuttle_linux_amd64/shuttle_linux_amd64
-            ./artifacts/shuttle_linux_arm64/shuttle_linux_arm64
-            ./artifacts/shuttle_darwin_amd64/shuttle_darwin_amd64
-            ./artifacts/shuttle_darwin_arm64/shuttle_darwin_arm64
+            ./artifacts/syncgo_windows_amd64.exe/syncgo_windows_amd64.exe
+            ./artifacts/syncgo_windows_arm64.exe/syncgo_windows_arm64.exe
+            ./artifacts/syncgo_linux_amd64/syncgo_linux_amd64
+            ./artifacts/syncgo_linux_arm64/syncgo_linux_arm64
+            ./artifacts/syncgo_darwin_amd64/syncgo_darwin_amd64
+            ./artifacts/syncgo_darwin_arm64/syncgo_darwin_arm64
           draft: false
           prerelease: false
         env:

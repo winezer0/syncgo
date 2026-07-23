@@ -1,4 +1,4 @@
-// Package util provides shared utilities used across the shuttle codebase.
+// Package util provides shared utilities used across the syncgo codebase.
 package util
 
 import "fmt"

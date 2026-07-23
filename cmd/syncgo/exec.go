@@ -24,11 +24,11 @@ defined in syncd.yaml. Useful for quick administration, debugging,
 or one-off operations.
 
 Examples:
-  shuttle exec vps "ls -la /var/www"
-  shuttle exec vps "systemctl restart nginx"
-  shuttle exec vps "df -h && free -m"
-  shuttle exec --all "uptime"
-  shuttle exec vps --file deploy.sh
+  syncgo exec vps "ls -la /var/www"
+  syncgo exec vps "systemctl restart nginx"
+  syncgo exec vps "df -h && free -m"
+  syncgo exec --all "uptime"
+  syncgo exec vps --file deploy.sh
 
 Flags:
   --all    Execute on ALL configured servers
@@ -64,8 +64,8 @@ func runExec(cmd *cobra.Command, args []string) {
 	} else if len(args) >= 2 {
 		command = strings.Join(args[1:], " ")
 	} else if !allFlag {
-		fmt.Fprintf(os.Stderr, "Usage: shuttle exec <server> <command>\n")
-		fmt.Fprintf(os.Stderr, "       shuttle exec --all <command>\n")
+		fmt.Fprintf(os.Stderr, "Usage: syncgo exec <server> <command>\n")
+		fmt.Fprintf(os.Stderr, "       syncgo exec --all <command>\n")
 		os.Exit(1)
 	} else {
 		// --all mode: first arg is the command
