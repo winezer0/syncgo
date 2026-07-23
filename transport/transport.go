@@ -47,12 +47,11 @@ type Transport interface {
 // SFTPConfig holds SFTP connection parameters.
 // SFTPConfig SFTP 连接参数。
 type SFTPConfig struct {
-	Host     string
-	Port     int
-	User     string
-	AuthType string // "auto", "password", "private_key"
-	KeyFile  string
-	Pass     string
+	Host    string
+	Port    int
+	User    string
+	KeyFile string
+	Pass    string
 }
 
 // SFTPTransport implements Transport over SFTP.
@@ -73,7 +72,7 @@ func NewSFTP(cfg SFTPConfig) *SFTPTransport {
 
 // Connect establishes an SFTP connection
 func (t *SFTPTransport) Connect() error {
-	authMethods := util.BuildAuthMethodsWithType(t.cfg.AuthType, t.cfg.KeyFile, t.cfg.Pass)
+	authMethods := util.BuildAuthMethods(t.cfg.KeyFile, t.cfg.Pass)
 	if len(authMethods) == 0 {
 		return fmt.Errorf("no auth method available")
 	}

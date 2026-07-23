@@ -1,8 +1,10 @@
 [English](README_EN.md) | 简体中文
 
-# Shuttle — Windows 原生增量文件同步工具
+# Shuttle — 跨平台增量文件同步工具
 
-**Shuttle** 是一个 Windows 原生的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。
+**Shuttle** 是一个跨平台（Windows / macOS / Linux）的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。内置 [`delta`](delta/) 包（源自 [go-rsync](https://github.com/henryborner/go-rsync)）实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。纯 Go + Go 汇编实现，`CGO_ENABLED=0` 编译为完全静态二进制，无外部依赖。
+
+> 原始项目请访问 [Shuttle](https://github.com/henryborner/shuttle)
 
 ```powershell
 shuttle                    # 双击启动 TUI
@@ -12,12 +14,14 @@ shuttle exec vps "uptime"  # 远端执行命令
 
 ## 功能
 
+- **跨平台** — Windows / macOS / Linux，支持 amd64 / arm64（Apple Silicon、AWS Graviton、树莓派）
+- **纯 Go 构建** — `CGO_ENABLED=0` 静态二进制，无 CGO、无 libc 依赖
 - **双同步模式** — `overlay`（增量覆盖）/ `full_replace`（tar.gz 压缩全量替换）
 - **增量传输** — rsync delta 算法，仅传输文件变化部分
 - **Task Hooks** — 同步前后自动执行远端命令（停服/重启/清缓存）
 - **远端命令** — `shuttle exec` 独立执行 SSH 命令，无需同步任务
-- **Agent 自动部署** — `shuttle deploy-agent` 一键交叉编译 + 部署远端 agent
-- **认证方式** — auto / password / private_key 三种认证类型
+- **Agent 自动部署** — `shuttle deploy-agent` 三级回退（本地文件 → Release 下载 → 交叉编译）+ 远端执行验证
+- **认证方式** — 配置 password 用密码，配置 key_file 用密钥，都不配则自动使用本机 ~/.ssh 密钥
 - **重试策略** — 可配置最大重试次数和间隔，瞬态失败自动恢复
 - **增量开关** — 全局 + 任务级 incremental 开关，关闭时强制全量比对
 - **服务器保护** — glob 模式保护列表，远端关键文件不被覆盖或删除
@@ -28,14 +32,32 @@ shuttle exec vps "uptime"  # 远端执行命令
 - **签名缓存** — 远端 agent 缓存块签名，重复同步跳过读盘
 - **中英双语** — 设置页切换
 - **库化 API** — 可作为 Go 库嵌入第三方项目（`syncer` 包）
-- **单文件** — `shuttle.exe`，无额外依赖
+- **单文件** — 零额外依赖，双击即用
 
 ## 安装
 
-从 [Releases](https://github.com/winezer0/syncgo/releases) 下载：
+从 [Releases](https://github.com/winezer0/syncgo/releases) 下载对应平台二进制：
 
 - **`shuttle.exe`** — Windows 主程序
 - **`shuttle_linux`** — Linux 远程 agent（通过 `deploy-agent` 或 TUI 部署）
+
+### 从源码构建
+
+需要 Go 1.26+。纯 Go 实现，无需 C 编译器：
+
+```bash
+git clone https://github.com/winezer0/syncgo.git
+cd syncgo
+
+# 本机平台
+CGO_ENABLED=0 go build -o shuttle ./cmd/shuttle
+
+# 交叉编译示例
+CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o shuttle_linux  ./cmd/shuttle
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o shuttle_mac    ./cmd/shuttle
+```
+
+支持的目标平台：`windows`、`darwin`、`linux` × `amd64`、`arm64`（`deploy-agent` 远端另支持 `arm`/`386`/`riscv64`）。
 
 ## 快速开始
 
@@ -74,7 +96,6 @@ servers:
     host: 192.168.1.100
     port: 22
     user: deploy
-    auth_type: auto        # auto / password / private_key
     key_file: ~/.ssh/id_ed25519
     protect:               # 保护列表（glob）
       - "*.db"
@@ -209,13 +230,44 @@ shuttle exec vps --file deploy.sh
 shuttle deploy-agent myserver
 ```
 
-执行步骤：
+### Agent 与主程序的关系
+
+Agent 与主程序是**同一个二进制**（同一份源码 `cmd/shuttle`）。远端仅使用其中的 `receive` 子命令进行 delta 签名计算和文件重建，但部署的是包含所有功能的完整 shuttle 可执行文件。
+
+### 二进制获取策略（三级回退）
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 1 | 本地文件 | 程序目录下的 `shuttle_linux_<arch>`（如 `shuttle_linux_amd64`） |
+| 2 | GitHub Releases | 自动下载 `v<version>/shuttle_linux_<arch>` |
+| 3 | 交叉编译 | 本机 `go build`（需 Go 环境，`CGO_ENABLED=0` 静态编译） |
+
+> 提示：将预构建的 `shuttle_linux_amd64` / `shuttle_linux_arm64` 放在 `shuttle.exe` 同级目录，即可离线部署，无需网络和 Go 环境。
+
+### 执行步骤
+
 1. 连接服务器，检测 CPU 架构（`uname -m`）
-2. 交叉编译 Linux 版 shuttle 二进制（支持 amd64/arm64/arm/386/riscv64）
+2. 按三级回退策略获取 agent 二进制
 3. SFTP 上传至 `~/.local/bin/shuttle`
 4. 设置可执行权限（`chmod 0755`）
 5. 确保 `~/.local/bin` 在 PATH 中
-6. 验证部署（`shuttle version`）
+6. **执行验证** — 远端运行 `shuttle version` 确认可执行
+7. **动态库诊断** — 若执行失败，自动运行 `ldd` 检测缺失的 `.so` 并给出修复建议
+
+### 验证失败诊断示例
+
+```
+  Verifying agent... failed: remote exec: exit status 127
+
+  ⚠ Missing shared libraries on remote:
+    libpthread.so.0 => not found
+    libc.so.6 => not found
+
+  The agent binary requires dynamic libraries not available on this system.
+  Solution: rebuild with CGO_ENABLED=0 for a fully static binary.
+```
+
+> 使用 `CGO_ENABLED=0` 编译的二进制为完全静态链接，不依赖任何 `.so`。此诊断主要防护手动放置了动态链接二进制的情况。
 
 部署后，`shuttle push` 自动使用 delta 增量传输。
 
@@ -228,12 +280,11 @@ import "github.com/winezer0/syncgo/syncer"
 
 // 编程式创建（无需 YAML 配置）
 s := syncer.New(syncer.Options{
-    Host:     "192.168.1.100",
-    Port:     22,
-    User:     "deploy",
-    AuthType: "private_key",
-    KeyFile:  "~/.ssh/id_ed25519",
-    Workers:  4,
+    Host:    "192.168.1.100",
+    Port:    22,
+    User:    "deploy",
+    KeyFile: "~/.ssh/id_ed25519",
+    Workers: 4,
 })
 defer s.Close()
 

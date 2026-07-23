@@ -1,11 +1,18 @@
 # Shuttle 同步配置文件
 # 用法: shuttle push [任务名]
+# 完整参考: shuttle config --schema
 
 version: "1.0"
 # 全局默认值（可选）
 language: zh               # en / zh
-checksum: xxh64            # 校验和算法: md5 / sha256 / xxh64
+checksum: xxh64            # 校验和算法: md5 / sha256 / xxh64 / xxh3
 workers: 4                 # delta 并行数: 1=串行 2/4/8=并行
+incremental: true          # 全局增量开关: true=仅传变更文件  false=全量比对+删除
+
+# 重试策略
+retry:
+  max_retries: 3           # 最大重试次数
+  delay_ms: 1000           # 重试间隔(毫秒)
 
 # 服务器连接配置
 servers:
@@ -14,7 +21,7 @@ servers:
     port: 22
     user: deploy
     key_file: ~/.ssh/id_ed25519
-    # password: your_password  # 不推荐用密码
+    # password: your_password  # 配置了password则优先使用密码认证
     protect:                 # 保护列表：匹配的远端文件绝不覆盖/删除
       - "*.db"
       - "*.pem"
@@ -23,26 +30,38 @@ servers:
 
 # 同步任务列表
 tasks:
+  # ── 示例1: 文件夹增量同步（部署网站）──
   - name: web
     source: E:\projects\website\dist\
     target: myserver:/var/www/html/
     options:
-      delete: true          # 删除远程多余文件
+      sync_mode: overlay     # overlay=增量覆盖(默认) / full_replace=压缩全量替换
+      delete: true           # 删除远端多余文件（仅 overlay 模式有效）
       exclude:
         - "*.tmp"
         - ".DS_Store"
-      compress: false
-      checksum: false       # true: 用校验和对比; false: 用时间+大小
+      checksum: false        # true: 用校验和对比; false: 用时间+大小
       flat: false            # true: 直接映射内容不套源文件夹名
       show_dots: false       # true: 同步隐藏文件（.开头）, 默认false=跳过
+      incremental: true      # 任务级增量开关，覆盖全局设置
+    hooks:
+      before:
+        - "systemctl stop nginx"       # 同步前停服务
+      after:
+        - "systemctl start nginx"      # 同步后重启
+      on_error: abort                  # abort=中止 / warn=警告 / ignore=忽略
 
-  - name: api
-    source: E:\projects\api\
-    target: myserver:/opt/app/api/
+  # ── 示例2: 压缩全量替换（纯净发布）──
+  - name: release
+    source: E:\builds\app\
+    target: myserver:/opt/app/
     options:
-      delete: false
-      exclude:
-        - ".git/"
-        - "*.log"
-        - "__pycache__/"
-      checksum: false
+      sync_mode: full_replace  # tar.gz打包→上传→解压→清理冗余
+      exclude: ["*.log"]
+
+  # ── 示例3: 单文件同步（推送配置）──
+  - name: nginx-config
+    source: E:\configs\nginx.conf
+    target: myserver:/etc/nginx/nginx.conf
+    options:
+      checksum: true         # 单文件建议开启，精确判断是否需要更新

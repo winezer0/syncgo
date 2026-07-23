@@ -1,8 +1,10 @@
 [简体中文](README.md) | English
 
-# Shuttle — rsync-style delta sync for Windows
+# Shuttle — cross-platform rsync-style delta sync
 
-**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
+**Shuttle** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push. Ships with a built-in [`delta`](delta/) package (derived from [go-rsync](https://github.com/henryborner/go-rsync)) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
+
+> Original project: [Shuttle](https://github.com/henryborner/shuttle)
 
 ```powershell
 shuttle                    # double-click to launch TUI
@@ -12,12 +14,14 @@ shuttle exec vps "uptime"  # run remote command
 
 ## Features
 
+- **Cross-platform** — Windows / macOS / Linux, amd64 / arm64 (Apple Silicon, AWS Graviton, Raspberry Pi)
+- **Pure Go build** — `CGO_ENABLED=0` static binaries, no CGO, no libc dependency
 - **Dual sync modes** — `overlay` (incremental) / `full_replace` (tar.gz pack & replace)
 - **Delta transfer** — rsync algorithm, only changed blocks are transmitted
 - **Task Hooks** — Run remote commands before/after sync (stop/start services, clear cache)
 - **Remote exec** — `shuttle exec` for standalone SSH commands, no sync task needed
-- **Agent auto-deploy** — `shuttle deploy-agent` cross-compiles & deploys remote agent
-- **Auth types** — auto / password / private_key authentication
+- **Agent auto-deploy** — `shuttle deploy-agent` with three-level fallback (local file → release download → cross-compile) + remote execution verification
+- **Auth** — password if configured, key_file if configured, otherwise auto-detects ~/.ssh keys
 - **Retry policy** — Configurable max retries and delay for transient failures
 - **Incremental toggle** — Global + per-task incremental switch
 - **Per-server protect** — Glob patterns, matching remote files never overwritten/deleted
@@ -28,14 +32,32 @@ shuttle exec vps "uptime"  # run remote command
 - **Signature cache** — Remote agent caches block signatures, skips disk reads on repeat syncs
 - **Bilingual** — EN/ZH toggle in settings
 - **Library API** — Embeddable as a Go library (`syncer` package)
-- **Single binary** — `shuttle.exe`, zero extra dependencies
+- **Single binary** — Zero extra dependencies
 
 ## Install
 
-Download from [Releases](https://github.com/winezer0/syncgo/releases):
+Download the binary for your platform from [Releases](https://github.com/winezer0/syncgo/releases):
 
 - **`shuttle.exe`** — Windows main program
 - **`shuttle_linux`** — Linux remote agent (deployed via `deploy-agent` or TUI)
+
+### Build from Source
+
+Requires Go 1.26+. Pure Go implementation — no C compiler needed:
+
+```bash
+git clone https://github.com/winezer0/syncgo.git
+cd syncgo
+
+# Native platform
+CGO_ENABLED=0 go build -o shuttle ./cmd/shuttle
+
+# Cross-compile examples
+CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o shuttle_linux  ./cmd/shuttle
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o shuttle_mac    ./cmd/shuttle
+```
+
+Supported targets: `windows`, `darwin`, `linux` × `amd64`, `arm64` (`deploy-agent` additionally supports `arm`/`386`/`riscv64` for remote agents).
 
 ## Quick Start
 
@@ -74,7 +96,6 @@ servers:
     host: 192.168.1.100
     port: 22
     user: deploy
-    auth_type: auto        # auto / password / private_key
     key_file: ~/.ssh/id_ed25519
     protect:               # protect patterns (glob)
       - "*.db"
@@ -209,13 +230,44 @@ shuttle exec vps --file deploy.sh
 shuttle deploy-agent myserver
 ```
 
-Steps performed:
+### Agent = Main Binary
+
+The agent is **the same binary** as the main program (same source: `cmd/shuttle`). The remote only uses the `receive` subcommand for delta signature computation and file reconstruction, but the deployed binary contains all functionality.
+
+### Binary Resolution (Three-Level Fallback)
+
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 | Local file | `shuttle_linux_<arch>` in the program directory (e.g. `shuttle_linux_amd64`) |
+| 2 | GitHub Releases | Auto-download `v<version>/shuttle_linux_<arch>` |
+| 3 | Cross-compile | Local `go build` (requires Go toolchain, `CGO_ENABLED=0` static build) |
+
+> Tip: Place pre-built `shuttle_linux_amd64` / `shuttle_linux_arm64` alongside `shuttle.exe` for offline deployment — no network or Go environment needed.
+
+### Steps Performed
+
 1. Connect and detect CPU architecture (`uname -m`)
-2. Cross-compile shuttle for Linux (amd64/arm64/arm/386/riscv64)
+2. Resolve agent binary via three-level fallback
 3. Upload binary to `~/.local/bin/shuttle` via SFTP
 4. Set executable permission (`chmod 0755`)
 5. Ensure `~/.local/bin` is in PATH
-6. Verify deployment (`shuttle version`)
+6. **Execution verification** — run `shuttle version` on remote to confirm it works
+7. **Shared library diagnostics** — if execution fails, auto-run `ldd` to detect missing `.so` files and suggest fixes
+
+### Verification Failure Example
+
+```
+  Verifying agent... failed: remote exec: exit status 127
+
+  ⚠ Missing shared libraries on remote:
+    libpthread.so.0 => not found
+    libc.so.6 => not found
+
+  The agent binary requires dynamic libraries not available on this system.
+  Solution: rebuild with CGO_ENABLED=0 for a fully static binary.
+```
+
+> Binaries built with `CGO_ENABLED=0` are fully statically linked with no `.so` dependencies. This diagnostic primarily guards against manually placed dynamically-linked binaries.
 
 After deployment, `shuttle push` automatically uses delta transfers.
 
@@ -228,12 +280,11 @@ import "github.com/winezer0/syncgo/syncer"
 
 // Programmatic creation (no YAML config needed)
 s := syncer.New(syncer.Options{
-    Host:     "192.168.1.100",
-    Port:     22,
-    User:     "deploy",
-    AuthType: "private_key",
-    KeyFile:  "~/.ssh/id_ed25519",
-    Workers:  4,
+    Host:    "192.168.1.100",
+    Port:    22,
+    User:    "deploy",
+    KeyFile: "~/.ssh/id_ed25519",
+    Workers: 4,
 })
 defer s.Close()
 

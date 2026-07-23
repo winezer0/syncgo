@@ -23,21 +23,6 @@ const (
 	SyncFullReplace SyncMode = "full_replace"
 )
 
-// AuthType defines the SSH authentication method.
-// AuthType 定义 SSH 认证方式。
-type AuthType string
-
-const (
-	// AuthAuto: auto-detect (try key first, then password).
-	// 自动探测（优先私钥，其次密码）。
-	AuthAuto AuthType = "auto"
-	// AuthPassword: password authentication only.
-	// 仅密码认证。
-	AuthPassword AuthType = "password"
-	// AuthPrivateKey: private key file authentication only.
-	// 仅私钥文件认证。
-	AuthPrivateKey AuthType = "private_key"
-)
 
 // RetryConfig holds retry policy for transient failures.
 // RetryConfig 瞬态失败重试策略。
@@ -110,7 +95,6 @@ type Server struct {
 	Host     string   `yaml:"host"`
 	Port     int      `yaml:"port"`
 	User     string   `yaml:"user"`
-	AuthType AuthType `yaml:"auth_type,omitempty"` // auto / password / private_key
 	KeyFile  string   `yaml:"key_file"`            // SSH private key path / SSH 私钥路径
 	Pass     string   `yaml:"password"`            // or password (not recommended) / 或密码（不推荐）
 	Protect  []string `yaml:"protect,omitempty"`   // protect patterns: remote files never overwritten/deleted / 保护模式

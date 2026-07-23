@@ -1,14 +1,19 @@
-// deploy_agent.go — Cross-compile and deploy shuttle agent to remote Linux server.
-// deploy_agent.go — 交叉编译并部署 shuttle agent 到远端 Linux 服务器。
+// deploy_agent.go — Deploy shuttle agent to remote Linux server.
+// Strategy: local pre-built binary → GitHub Release download → cross-compile.
+// deploy_agent.go — 部署 shuttle agent 到远端 Linux 服务器。
+// 策略：本地预构建二进制 → GitHub Release 下载 → 交叉编译。
 package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/winezer0/syncgo/config"
 	"github.com/winezer0/syncgo/transport"
@@ -19,16 +24,20 @@ import (
 func init() {
 	deployCmd := &cobra.Command{
 		Use:   "deploy-agent <server name>",
-		Short: "Cross-compile and deploy shuttle agent to a remote Linux server",
-		Long: `Automatically build the shuttle binary for the remote server's
-Linux architecture (amd64/arm64) and deploy it via SFTP.
+		Short: "Deploy shuttle agent to a remote Linux server",
+		Long: `Deploy the shuttle agent binary to the remote server via SFTP.
 
 The agent enables rsync-style delta transfers: only changed portions
 of files are sent over the network instead of full file content.
 
+Agent binary resolution order:
+  1. Local file: shuttle_linux_<arch> in the program directory
+  2. Download from GitHub Releases (v` + versionStr + `)
+  3. Cross-compile from source (requires local Go toolchain)
+
 Steps performed:
   1. Connect to the server and detect CPU architecture (uname -m)
-  2. Cross-compile shuttle for linux/<arch> using Go
+  2. Resolve agent binary (local → release → build)
   3. Upload the binary to ~/.local/bin/shuttle on the server
   4. Set executable permissions (chmod +x)
   5. Verify by running 'shuttle version' on the remote
@@ -59,12 +68,11 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 	// 1. Connect
 	fmt.Printf("Connecting to %s@%s:%d ...\n", server.User, server.Host, server.Port)
 	tr := transport.NewSFTP(transport.SFTPConfig{
-		Host:     server.Host,
-		Port:     server.Port,
-		User:     server.User,
-		AuthType: string(server.AuthType),
-		KeyFile:  server.KeyFile,
-		Pass:     server.Pass,
+		Host:    server.Host,
+		Port:    server.Port,
+		User:    server.User,
+		KeyFile: server.KeyFile,
+		Pass:    server.Pass,
 	})
 	if err := tr.Connect(); err != nil {
 		fmt.Fprintf(os.Stderr, "Connect failed: %v\n", err)
@@ -82,34 +90,33 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("%s\n", remoteArch)
 
-	// Map uname -m output to Go GOARCH
 	goArch := unameToGoArch(remoteArch)
 	if goArch == "" {
 		fmt.Fprintf(os.Stderr, "Unsupported architecture: %s\n", remoteArch)
 		os.Exit(1)
 	}
 
-	// 3. Cross-compile
-	fmt.Printf("  Cross-compiling shuttle for linux/%s...\n", goArch)
-	tmpBinary, err := crossCompile(goArch)
+	// 3. Resolve agent binary: local → release → cross-compile
+	agentPath, cleanup, err := resolveAgentBinary(goArch)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Build failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to resolve agent binary: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.Remove(tmpBinary)
+	if cleanup != nil {
+		defer cleanup()
+	}
 
-	binInfo, _ := os.Stat(tmpBinary)
-	fmt.Printf("  Build OK: %s (%.1f MB)\n", filepath.Base(tmpBinary), float64(binInfo.Size())/1024/1024)
+	binInfo, _ := os.Stat(agentPath)
+	fmt.Printf("  Agent ready: %s (%.1f MB)\n", filepath.Base(agentPath), float64(binInfo.Size())/1024/1024)
 
 	// 4. Upload to remote
 	remoteDir := ".local/bin"
 	remotePath := remoteDir + "/shuttle"
 	fmt.Printf("  Uploading to %s:%s ...\n", server.Host, remotePath)
 
-	// Ensure directory exists
 	tr.MkdirAll(remoteDir)
 
-	f, err := os.Open(tmpBinary)
+	f, err := os.Open(agentPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Open binary failed: %v\n", err)
 		os.Exit(1)
@@ -133,18 +140,122 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 	// 6. Ensure ~/.local/bin is in PATH (add to .bashrc if missing)
 	ensurePath(tr, remoteDir)
 
-	// 7. Verify
+	// 7. Verify execution (with shared library diagnostics)
+	// 7. 验证可执行性（含动态库依赖诊断）
 	fmt.Print("  Verifying agent... ")
 	version, err := verifyAgent(tr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "verification failed: %v\n", err)
-		fmt.Println("\n  Agent deployed but verification failed.")
-		fmt.Printf("  You may need to add ~/.local/bin to PATH manually:\n")
-		fmt.Printf("    export PATH=\"$HOME/.local/bin:$PATH\"\n")
+		fmt.Fprintf(os.Stderr, "failed: %v\n", err)
+		// Diagnose: check for missing shared libraries
+		// 诊断：检查缺失的共享库
+		if libs := checkMissingLibs(tr, remotePath); libs != "" {
+			fmt.Printf("\n  ⚠ Missing shared libraries on remote:\n%s\n", libs)
+			fmt.Println("  The agent binary requires dynamic libraries not available on this system.")
+			fmt.Println("  Solution: rebuild with CGO_ENABLED=0 for a fully static binary.")
+		} else {
+			fmt.Println("\n  Agent deployed but cannot execute.")
+			fmt.Println("  Possible causes: wrong architecture, missing permissions, or PATH issue.")
+			fmt.Printf("  Try manually: export PATH=\"$HOME/.local/bin:$PATH\" && shuttle version\n")
+		}
 		return
 	}
 	fmt.Printf("OK — %s\n", version)
 	fmt.Println("\n  Delta incremental transfers are now enabled for this server!")
+}
+
+// resolveAgentBinary resolves the agent binary using three-level fallback:
+// 1. Local pre-built file (shuttle_linux_<arch> in exe directory)
+// 2. Download from GitHub Releases
+// 3. Cross-compile from source
+// Returns: (path, cleanupFunc, error). cleanupFunc may be nil for local files.
+// resolveAgentBinary 三级回退获取 agent 二进制：本地文件 → Release 下载 → 交叉编译。
+func resolveAgentBinary(goArch string) (string, func(), error) {
+	// Level 1: local pre-built binary
+	if local := findLocalAgent(goArch); local != "" {
+		fmt.Printf("  [1/3] Found local agent: %s\n", local)
+		return local, nil, nil
+	}
+	fmt.Printf("  [1/3] Local agent not found (shuttle_linux_%s), trying release...\n", goArch)
+
+	// Level 2: download from GitHub Releases
+	downloaded, err := downloadFromRelease(goArch)
+	if err == nil {
+		fmt.Printf("  [2/3] Downloaded from GitHub Releases\n")
+		return downloaded, func() { os.Remove(downloaded) }, nil
+	}
+	fmt.Printf("  [2/3] Release download failed: %v, trying cross-compile...\n", err)
+
+	// Level 3: cross-compile
+	tmpBinary, err := crossCompile(goArch)
+	if err != nil {
+		return "", nil, fmt.Errorf("all methods failed, last error: %w", err)
+	}
+	fmt.Printf("  [3/3] Cross-compiled from source\n")
+	return tmpBinary, func() { os.Remove(tmpBinary) }, nil
+}
+
+// findLocalAgent looks for a pre-built agent binary in the executable's directory.
+// Naming convention: shuttle_linux_<arch> (e.g. shuttle_linux_amd64, shuttle_linux_arm64).
+// findLocalAgent 在可执行文件目录下查找预构建的 agent 二进制。
+func findLocalAgent(goArch string) string {
+	name := "shuttle_linux_" + goArch
+
+	// Try executable directory first
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), name)
+		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() && fi.Size() > 0 {
+			return candidate
+		}
+	}
+
+	// Try current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, name)
+		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() && fi.Size() > 0 {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+// downloadFromRelease downloads the agent binary from GitHub Releases.
+// URL pattern: https://github.com/winezer0/syncgo/releases/download/v<version>/shuttle_linux_<arch>
+// downloadFromRelease 从 GitHub Releases 下载 agent 二进制。
+func downloadFromRelease(goArch string) (string, error) {
+	fileName := "shuttle_linux_" + goArch
+	url := fmt.Sprintf("https://github.com/winezer0/syncgo/releases/download/v%s/%s", versionStr, fileName)
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	// Write to temp file
+	tmpFile, err := os.CreateTemp("", "shuttle_agent_*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmpFile.Name()
+
+	n, err := io.Copy(tmpFile, resp.Body)
+	tmpFile.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("download interrupted: %w", err)
+	}
+	if n < 1024 {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("downloaded file too small (%d bytes), likely an error page", n)
+	}
+
+	return tmpPath, nil
 }
 
 // detectRemoteArch runs uname -m on the remote to get CPU architecture.
@@ -251,12 +362,13 @@ func ensurePath(tr *transport.SFTPTransport, dir string) {
 	tr.ExecOutput(checkCmd)
 }
 
-// verifyAgent runs 'shuttle version' on the remote to confirm deployment.
+// verifyAgent runs 'shuttle version' on the remote to confirm the binary can execute.
+// verifyAgent 在远端执行 'shuttle version' 确认二进制可正常运行。
 func verifyAgent(tr *transport.SFTPTransport) (string, error) {
 	cmd := "$HOME/.local/bin/shuttle version"
 	output, err := tr.ExecOutput(cmd)
 	if err != nil {
-		return "", fmt.Errorf("remote shuttle: %w", err)
+		return "", fmt.Errorf("remote exec: %w", err)
 	}
 	if output == "" {
 		return "", fmt.Errorf("no output from remote shuttle")
@@ -264,6 +376,27 @@ func verifyAgent(tr *transport.SFTPTransport) (string, error) {
 	// Return first line of version output
 	lines := strings.SplitN(output, "\n", 2)
 	return lines[0], nil
+}
+
+// checkMissingLibs runs ldd on the remote binary to detect missing shared libraries.
+// Returns formatted missing library info, or empty string if no issues / ldd unavailable.
+// checkMissingLibs 在远端对二进制执行 ldd 检测缺失的共享库。
+// 返回缺失库信息，无问题或 ldd 不可用时返回空字符串。
+func checkMissingLibs(tr *transport.SFTPTransport, remotePath string) string {
+	// ldd reports "not found" for missing libs; static binaries report "not a dynamic executable"
+	cmd := fmt.Sprintf("ldd '%s' 2>&1 | grep -i 'not found' || true", remotePath)
+	out, err := tr.ExecOutput(cmd)
+	if err != nil || out == "" {
+		return ""
+	}
+	// Format: indent each missing lib line
+	var sb strings.Builder
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line != "" {
+			sb.WriteString("    " + strings.TrimSpace(line) + "\n")
+		}
+	}
+	return sb.String()
 }
 
 // getLocalArch returns the current machine's Go arch for display.

@@ -7,10 +7,9 @@ import (
 	"strings"
 
 	"github.com/winezer0/syncgo/config"
+	"github.com/winezer0/syncgo/delta"
 	"github.com/winezer0/syncgo/transport"
 	"github.com/winezer0/syncgo/util"
-
-	delta "github.com/henryborner/go-rsync"
 )
 
 // highRiskDryExts are high-risk file extensions for extra warnings during dry-run.
@@ -149,7 +148,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		fmt.Printf("  Connecting %s@%s:%d...\n", server.User, server.Host, server.Port)
 		sftp := transport.NewSFTP(transport.SFTPConfig{
 			Host: server.Host, Port: server.Port,
-			User: server.User, AuthType: string(server.AuthType),
+			User:    server.User,
 			KeyFile: server.KeyFile, Pass: server.Pass,
 		})
 
@@ -232,7 +231,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		if len(task.Hooks.After) > 0 && !dryRun && syncErr == nil {
 			hookTr := transport.NewSFTP(transport.SFTPConfig{
 				Host: server.Host, Port: server.Port,
-				User: server.User, AuthType: string(server.AuthType),
+				User:    server.User,
 				KeyFile: server.KeyFile, Pass: server.Pass,
 			})
 			if err := hookTr.Connect(); err == nil {

@@ -43,7 +43,6 @@ func TestNewOptionsCustom(t *testing.T) {
 		Host:       "10.0.0.1",
 		Port:       2222,
 		User:       "admin",
-		AuthType:   config.AuthPassword,
 		Password:   "secret",
 		Protect:    []string{"*.log", "data/"},
 		Workers:    8,
@@ -54,9 +53,6 @@ func TestNewOptionsCustom(t *testing.T) {
 
 	if s.server.Port != 2222 {
 		t.Errorf("Port = %d, want 2222", s.server.Port)
-	}
-	if s.server.AuthType != config.AuthPassword {
-		t.Errorf("AuthType = %q, want %q", s.server.AuthType, config.AuthPassword)
 	}
 	if s.server.Pass != "secret" {
 		t.Errorf("Pass = %q, want %q", s.server.Pass, "secret")

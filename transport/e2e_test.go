@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	delta "github.com/henryborner/go-rsync"
+	delta "github.com/winezer0/syncgo/delta"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -102,7 +102,7 @@ func doDelta(t *testing.T, client *ssh.Client, path string, newData []byte) (sen
 	stdin, _ := session.StdinPipe()
 	stdout, _ := session.StdoutPipe()
 	stderr, _ := session.StderrPipe()
-	session.Start("/usr/local/bin/shuttle receive '" + strings.ReplaceAll(path, "'", "'\\''") + "'")
+	session.Start("A=/usr/local/bin/shuttle; [ -x \"$A\" ] || A=$HOME/.local/bin/shuttle; exec \"$A\" receive '" + strings.ReplaceAll(path, "'", "'\\''") + "'")
 
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {

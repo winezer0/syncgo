@@ -63,35 +63,19 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 }
 
 // BuildAuthMethods builds SSH auth methods from configured key + optional password.
+// Priority: explicit password > explicit key_file > default ~/.ssh keys.
+// BuildAuthMethods 构建 SSH 认证方法。
+// 优先级：显式密码 > 显式 key_file > 默认 ~/.ssh 密钥。
 func BuildAuthMethods(keyPath, password string) []ssh.AuthMethod {
 	var methods []ssh.AuthMethod
+	if password != "" {
+		methods = append(methods, ssh.Password(password))
+	}
 	signer, err := ReadSSHKey(keyPath)
 	if err == nil {
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
-	if password != "" {
-		methods = append(methods, ssh.Password(password))
-	}
 	return methods
-}
-
-// BuildAuthMethodsWithType builds SSH auth methods respecting the explicit AuthType.
-// authType: "auto" (default), "password", "private_key".
-// BuildAuthMethodsWithType 根据显式 AuthType 构建 SSH 认证方法。
-func BuildAuthMethodsWithType(authType, keyPath, password string) []ssh.AuthMethod {
-	switch authType {
-	case "password":
-		if password != "" {
-			return []ssh.AuthMethod{ssh.Password(password)}
-		}
-	case "private_key":
-		signer, err := ReadSSHKey(keyPath)
-		if err == nil {
-			return []ssh.AuthMethod{ssh.PublicKeys(signer)}
-		}
-	}
-	// auto / fallback: try both
-	return BuildAuthMethods(keyPath, password)
 }
 
 // CheckHostKey returns an ssh.HostKeyCallback that verifies the host key

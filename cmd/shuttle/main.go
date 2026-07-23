@@ -10,11 +10,10 @@ import (
 
 	"strings"
 
-	"github.com/winezer0/syncgo/config"
-	"github.com/winezer0/syncgo/tui"
-
-	delta "github.com/henryborner/go-rsync"
 	"github.com/spf13/cobra"
+	"github.com/winezer0/syncgo/config"
+	"github.com/winezer0/syncgo/delta"
+	"github.com/winezer0/syncgo/tui"
 )
 
 var (
@@ -25,7 +24,7 @@ var (
 	algoName   string
 	schemaFlag bool
 
-	versionStr = "0.1.5.9"
+	versionStr = "0.0.1"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
 		Short: "Incremental file sync over SSH",
@@ -286,12 +285,9 @@ Server
   host       string    SSH host address (IP or domain)
   port       int       SSH port (default 22)
   user       string    Login username
-  auth_type  string    Authentication type: auto / password / private_key (default auto)
-                       auto: try private key first, then password
-                       password: password only
-                       private_key: private key file only
-  key_file   string    SSH private key path, e.g. ~/.ssh/id_ed25519 (preferred over password)
-  password   string    Login password (fallback when key is unavailable; plaintext not recommended)
+  key_file   string    SSH private key path, e.g. ~/.ssh/id_ed25519
+  password   string    Login password (used when configured; plaintext not recommended)
+                       Auth priority: password > key_file > default ~/.ssh keys
   protect    []string  Protect patterns (glob) — matching remote files are NEVER overwritten or deleted
                        Example: ["*.db", "*.pem", "config.yaml", "secrets/"]
 
@@ -465,7 +461,6 @@ servers:
     host: 192.168.1.100
     port: 22
     user: deploy
-    auth_type: auto        # auto / password / private_key
     key_file: ~/.ssh/id_ed25519
     protect:                # 保护列表：匹配的远端文件绝不覆盖/删除
       - "*.db"

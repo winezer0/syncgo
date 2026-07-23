@@ -18,8 +18,8 @@ import (
 
 	"github.com/winezer0/syncgo/util"
 
-	delta "github.com/henryborner/go-rsync"
 	"github.com/spf13/cobra"
+	"github.com/winezer0/syncgo/delta"
 )
 
 // cacheDir returns the signature cache directory (~/.shuttle_cache/).

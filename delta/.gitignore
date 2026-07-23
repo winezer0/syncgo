@@ -1,0 +1,13 @@
+﻿# Build artifacts
+*.exe
+*.test
+*.o
+*.out
+
+# Generated objects in code generator dirs
+gen_md5x8/null.o
+gen_sha256x8/null.o
+
+# Binary benchmarks
+bench_linux
+test_linux

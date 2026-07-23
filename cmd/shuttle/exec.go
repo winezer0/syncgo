@@ -105,12 +105,11 @@ func runExec(cmd *cobra.Command, args []string) {
 		fmt.Printf("[%s] %s@%s:%d\n", srv.Name, srv.User, srv.Host, srv.Port)
 
 		tr := transport.NewSFTP(transport.SFTPConfig{
-			Host:     srv.Host,
-			Port:     srv.Port,
-			User:     srv.User,
-			AuthType: string(srv.AuthType),
-			KeyFile:  srv.KeyFile,
-			Pass:     srv.Pass,
+			Host:    srv.Host,
+			Port:    srv.Port,
+			User:    srv.User,
+			KeyFile: srv.KeyFile,
+			Pass:    srv.Pass,
 		})
 
 		if err := tr.Connect(); err != nil {

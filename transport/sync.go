@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	delta "github.com/henryborner/go-rsync"
+	delta "github.com/winezer0/syncgo/delta"
 )
 
 type SyncOptions struct {

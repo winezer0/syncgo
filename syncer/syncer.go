@@ -22,16 +22,15 @@ import (
 // Options configures a Syncer programmatically without a YAML config file.
 // Options 以编程方式配置 Syncer，无需 YAML 配置文件。
 type Options struct {
-	Host       string          // remote host / 远端主机
-	Port       int             // SSH port (default 22) / SSH 端口（默认22）
-	User       string          // SSH user / SSH 用户
-	AuthType   config.AuthType // auto / password / private_key
-	KeyFile    string          // SSH private key path / SSH 私钥路径
-	Password   string          // SSH password / SSH 密码
-	Protect    []string        // protect patterns / 保护模式
-	Workers    int             // delta parallel workers (default 4) / delta 并行数（默认4）
-	MaxRetries int             // max retry attempts (default 3) / 最大重试次数（默认3）
-	DelayMs    int             // retry delay in milliseconds (default 1000) / 重试间隔毫秒（默认1000）
+	Host       string   // remote host / 远端主机
+	Port       int      // SSH port (default 22) / SSH 端口（默认22）
+	User       string   // SSH user / SSH 用户
+	KeyFile    string   // SSH private key path / SSH 私钥路径
+	Password   string   // SSH password / SSH 密码
+	Protect    []string // protect patterns / 保护模式
+	Workers    int      // delta parallel workers (default 4) / delta 并行数（默认4）
+	MaxRetries int      // max retry attempts (default 3) / 最大重试次数（默认3）
+	DelayMs    int      // retry delay in milliseconds (default 1000) / 重试间隔毫秒（默认1000）
 }
 
 // New creates a Syncer from programmatic options (no YAML config needed).
@@ -53,13 +52,12 @@ func New(opts Options) *Syncer {
 		Workers: opts.Workers,
 	}
 	server := config.Server{
-		Host:     opts.Host,
-		Port:     opts.Port,
-		User:     opts.User,
-		AuthType: opts.AuthType,
-		KeyFile:  opts.KeyFile,
-		Pass:     opts.Password,
-		Protect:  opts.Protect,
+		Host:    opts.Host,
+		Port:    opts.Port,
+		User:    opts.User,
+		KeyFile: opts.KeyFile,
+		Pass:    opts.Password,
+		Protect: opts.Protect,
 	}
 	return &Syncer{
 		cfg:    cfg,
@@ -120,12 +118,11 @@ func (s *Syncer) ConnectContext(ctx context.Context) error {
 			port = 22
 		}
 		s.tr = transport.NewSFTP(transport.SFTPConfig{
-			Host:     s.server.Host,
-			Port:     port,
-			User:     s.server.User,
-			AuthType: string(s.server.AuthType),
-			KeyFile:  s.server.KeyFile,
-			Pass:     s.server.Pass,
+			Host:    s.server.Host,
+			Port:    port,
+			User:    s.server.User,
+			KeyFile: s.server.KeyFile,
+			Pass:    s.server.Pass,
 		})
 		s.retryable = transport.NewRetryableTransport(s.tr, transport.RetryPolicy{
 			MaxRetries: s.retry.MaxRetries,
