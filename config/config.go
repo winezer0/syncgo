@@ -10,6 +10,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// DefaultVersion is the fallback version used when no -ldflags override is provided.
+// DefaultVersion 未通过 -ldflags 覆盖时的回退版本号。
+const DefaultVersion = "0.0.3"
+
 // SyncMode defines the synchronization strategy.
 // SyncMode 定义同步策略。
 type SyncMode string
