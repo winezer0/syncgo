@@ -15,7 +15,7 @@ syncgo exec vps "uptime"  # run remote command
 ## Features
 
 - **Cross-platform** — Windows / macOS / Linux, amd64 / arm64 (Apple Silicon, AWS Graviton, Raspberry Pi)
-- **Pure Go build** — `CGO_ENABLED=0` static binaries, no CGO, no libc dependency
+- **Pure Go build** — `CGO_ENABLED=0` static binaries, no CGO, no libc; conditional TUI compilation (`-tags tui`), lite build only ~8.6 MB
 - **Dual sync modes** — `overlay` (incremental) / `full_replace` (tar.gz pack & replace)
 - **Delta transfer** — rsync algorithm, only changed blocks are transmitted
 - **Task Hooks** — Run remote commands before/after sync (stop/start services, clear cache)
@@ -49,13 +49,26 @@ Requires Go 1.26+. Pure Go implementation — no C compiler needed:
 git clone https://github.com/winezer0/syncgo.git
 cd syncgo
 
-# Native platform
-CGO_ENABLED=0 go build -o syncgo ./cmd/syncgo
+# Lite build (default, no TUI, ~8.6 MB)
+CGO_ENABLED=0 go build -ldflags="-s -w" -o syncgo ./cmd/syncgo
 
-# Cross-compile examples
-CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o syncgo_linux  ./cmd/syncgo
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o syncgo_mac    ./cmd/syncgo
+# Full build (with interactive TUI, ~9.6 MB)
+CGO_ENABLED=0 go build -tags tui -ldflags="-s -w" -o syncgo ./cmd/syncgo
+
+# Cross-compile examples (remote agents don't need TUI)
+CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o syncgo_linux_amd64  ./cmd/syncgo
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags tui -ldflags="-s -w" -o syncgo_darwin_arm64 ./cmd/syncgo
 ```
+
+**Build variants:**
+
+| Variant | Build Tag | Size | Use Case |
+|---------|-----------|------|----------|
+| Lite | default (no tag) | ~8.6 MB | Remote agent, CLI automation, servers |
+| Full | `-tags tui` | ~9.6 MB | Desktop interaction, double-click TUI management |
+
+> The lite build excludes the interactive TUI (bubbletea/lipgloss). All CLI commands (push, exec, deploy-agent, etc.) work normally.  
+> Remote agents only need the `receive` subcommand — the lite build saves ~1 MB transfer size.
 
 Supported targets: `windows`, `darwin`, `linux` × `amd64`, `arm64` (`deploy-agent` additionally supports `arm`/`386`/`riscv64` for remote agents).
 

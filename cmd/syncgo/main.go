@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/winezer0/syncgo/config"
 	"github.com/winezer0/syncgo/delta"
-	"github.com/winezer0/syncgo/tui"
 )
 
 var (
@@ -79,18 +78,8 @@ Quick reference:
 	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, sha256, xxh64, or xxh3 (overrides config)")
 	rootCmd.AddCommand(pushCmd)
 
-	// tui
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "tui",
-		Short: "Open the terminal UI",
-		Long: `Launch the interactive terminal user interface.
-
-The TUI provides panes for dashboard (sync status overview),
-mapping management (add/edit/delete sync tasks), server management
-(test connection, deploy agent), a file explorer, and settings
-(language, checksum algorithm, worker count).`,
-		Run: runTUI,
-	})
+	// tui (conditionally compiled with -tags tui)
+	registerTUICmd(rootCmd)
 
 	// list
 	rootCmd.AddCommand(&cobra.Command{
@@ -504,22 +493,4 @@ tasks:
   #     checksum: true       # 单文件建议开启，精确判断是否需要更新
 `
 
-func runTUI(cmd *cobra.Command, args []string) {
-	cfg, err := config.Load("syncd.yaml")
-	if err != nil {
-		if os.IsNotExist(err) {
-			// First launch: generate default config then enter TUI
-			os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
-			fmt.Println("Created syncd.yaml — editing in TUI...")
-			cfg, _ = config.Load("syncd.yaml")
-		} else {
-			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	if err := tui.Run(cfg, "syncd.yaml"); err != nil {
-		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
-		os.Exit(1)
-	}
-}
+// runTUI is defined in tui_enabled.go (with -tags tui) or tui_disabled.go (stub).

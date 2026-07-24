@@ -7,6 +7,7 @@ package syncer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -265,8 +266,37 @@ func findLocalAgent(goArch string) string {
 }
 
 // downloadFromRelease downloads the agent binary from GitHub Releases.
+// Strategy: try the specified version first, then fall back to the latest release.
+// downloadFromRelease 从 GitHub Releases 下载 agent 二进制。
+// 策略：优先下载相同版本，失败时回退到最新 Release。
 func downloadFromRelease(goArch, version string) (string, error) {
 	fileName := "syncgo_linux_" + goArch
+
+	// Attempt 1: exact version match
+	path, err := downloadReleaseAsset(fileName, version)
+	if err == nil {
+		return path, nil
+	}
+
+	// Attempt 2: fall back to latest release
+	latest, latestErr := getLatestReleaseVersion()
+	if latestErr != nil {
+		return "", fmt.Errorf("version %s failed: %w; latest release lookup failed: %v", version, err, latestErr)
+	}
+	if latest == version {
+		return "", fmt.Errorf("version %s failed: %w (already the latest release)", version, err)
+	}
+
+	path, err2 := downloadReleaseAsset(fileName, latest)
+	if err2 != nil {
+		return "", fmt.Errorf("version %s failed: %w; latest (v%s) also failed: %v", version, err, latest, err2)
+	}
+	return path, nil
+}
+
+// downloadReleaseAsset downloads a single release asset by version.
+// downloadReleaseAsset 按版本号下载单个 Release 产物。
+func downloadReleaseAsset(fileName, version string) (string, error) {
 	url := fmt.Sprintf("https://github.com/winezer0/syncgo/releases/download/v%s/%s", version, fileName)
 
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -298,6 +328,43 @@ func downloadFromRelease(goArch, version string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// getLatestReleaseVersion queries the GitHub API for the latest release tag.
+// Returns the version string without the 'v' prefix (e.g. "0.0.3").
+// getLatestReleaseVersion 通过 GitHub API 获取最新 Release 版本号（不含 'v' 前缀）。
+func getLatestReleaseVersion() (string, error) {
+	url := "https://api.github.com/repos/winezer0/syncgo/releases/latest"
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("parse GitHub API response: %w", err)
+	}
+	if result.TagName == "" {
+		return "", fmt.Errorf("no tag_name in GitHub API response")
+	}
+
+	// Strip 'v' prefix: "v0.0.3" → "0.0.3"
+	return strings.TrimPrefix(result.TagName, "v"), nil
 }
 
 // crossCompile builds the syncgo binary for linux/<goArch>.

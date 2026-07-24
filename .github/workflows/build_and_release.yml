@@ -17,24 +17,32 @@ jobs:
     strategy:
       matrix:
         include:
+          # Desktop builds (with TUI)
           - goos: windows
             goarch: amd64
             artifact-name: syncgo_windows_amd64.exe
+            build_tags: tui
           - goos: windows
             goarch: arm64
             artifact-name: syncgo_windows_arm64.exe
-          - goos: linux
-            goarch: amd64
-            artifact-name: syncgo_linux_amd64
-          - goos: linux
-            goarch: arm64
-            artifact-name: syncgo_linux_arm64
+            build_tags: tui
           - goos: darwin
             goarch: amd64
             artifact-name: syncgo_darwin_amd64
+            build_tags: tui
           - goos: darwin
             goarch: arm64
             artifact-name: syncgo_darwin_arm64
+            build_tags: tui
+          # Linux agent builds (lite, no TUI — smaller binary)
+          - goos: linux
+            goarch: amd64
+            artifact-name: syncgo_linux_amd64
+            build_tags: ""
+          - goos: linux
+            goarch: arm64
+            artifact-name: syncgo_linux_arm64
+            build_tags: ""
 
     steps:
       - name: Checkout code
@@ -70,8 +78,25 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          go build -ldflags="-s -w -X main.versionStr=${{ steps.version.outputs.ver }}" \
+          TAGS=""
+          if [ -n "${{ matrix.build_tags }}" ]; then
+            TAGS="-tags ${{ matrix.build_tags }}"
+          fi
+          go build $TAGS -ldflags="-s -w -X main.versionStr=${{ steps.version.outputs.ver }}" \
             -o ${{ matrix.artifact-name }} ./cmd/syncgo
+          echo "Before UPX: $(du -h ${{ matrix.artifact-name }} | cut -f1)"
+
+      - name: Install UPX
+        if: matrix.goos != 'darwin'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl
+          upx --version | head -1
+
+      - name: UPX compress (maximum)
+        if: matrix.goos != 'darwin'
+        run: |
+          upx --best --lzma --no-progress ${{ matrix.artifact-name }}
+          echo "After UPX: $(du -h ${{ matrix.artifact-name }} | cut -f1)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -124,17 +149,18 @@ jobs:
             - 版本号: ${{ steps.version.outputs.ver }}
             - 构建日期: ${{ steps.date.outputs.builddate }}
             - CGO: 禁用（完全静态二进制，无 .so 依赖）
+            - UPX: 最大压缩（--best --lzma，macOS 除外）
 
             ### 下载说明
 
             | 文件 | 平台 | 用途 |
             |------|------|------|
-            | `syncgo_windows_amd64.exe` | Windows x64 | 主程序 |
-            | `syncgo_windows_arm64.exe` | Windows ARM64 | 主程序 |
-            | `syncgo_linux_amd64` | Linux x64 | 主程序 / 远端 Agent |
-            | `syncgo_linux_arm64` | Linux ARM64 | 主程序 / 远端 Agent |
-            | `syncgo_darwin_amd64` | macOS Intel | 主程序 |
-            | `syncgo_darwin_arm64` | macOS Apple Silicon | 主程序 |
+            | `syncgo_windows_amd64.exe` | Windows x64 | 主程序（含 TUI） |
+            | `syncgo_windows_arm64.exe` | Windows ARM64 | 主程序（含 TUI） |
+            | `syncgo_linux_amd64` | Linux x64 | 远端 Agent（精简版） |
+            | `syncgo_linux_arm64` | Linux ARM64 | 远端 Agent（精简版） |
+            | `syncgo_darwin_amd64` | macOS Intel | 主程序（含 TUI） |
+            | `syncgo_darwin_arm64` | macOS Apple Silicon | 主程序（含 TUI） |
 
             ### Agent 部署
 

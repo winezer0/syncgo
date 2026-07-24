@@ -15,7 +15,7 @@ syncgo exec vps "uptime"  # 远端执行命令
 ## 功能
 
 - **跨平台** — Windows / macOS / Linux，支持 amd64 / arm64（Apple Silicon、AWS Graviton、树莓派）
-- **纯 Go 构建** — `CGO_ENABLED=0` 静态二进制，无 CGO、无 libc 依赖
+- **纯 Go 构建** — `CGO_ENABLED=0` 静态二进制，无 CGO、无 libc 依赖；TUI 条件编译（`-tags tui`），精简版仅 ~8.6 MB
 - **双同步模式** — `overlay`（增量覆盖）/ `full_replace`（tar.gz 压缩全量替换）
 - **增量传输** — rsync delta 算法，仅传输文件变化部分
 - **Task Hooks** — 同步前后自动执行远端命令（停服/重启/清缓存）
@@ -49,13 +49,26 @@ syncgo exec vps "uptime"  # 远端执行命令
 git clone https://github.com/winezer0/syncgo.git
 cd syncgo
 
-# 本机平台
-CGO_ENABLED=0 go build -o syncgo ./cmd/syncgo
+# 精简版（默认，无 TUI，~8.6 MB）
+CGO_ENABLED=0 go build -ldflags="-s -w" -o syncgo ./cmd/syncgo
 
-# 交叉编译示例
-CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o syncgo_linux  ./cmd/syncgo
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o syncgo_mac    ./cmd/syncgo
+# 完整版（含交互式 TUI，~9.6 MB）
+CGO_ENABLED=0 go build -tags tui -ldflags="-s -w" -o syncgo ./cmd/syncgo
+
+# 交叉编译示例（远端 agent 无需 TUI）
+CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o syncgo_linux_amd64  ./cmd/syncgo
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags tui -ldflags="-s -w" -o syncgo_darwin_arm64 ./cmd/syncgo
 ```
+
+**构建变体说明：**
+
+| 变体 | Build Tag | 体积 | 适用场景 |
+|------|-----------|------|----------|
+| 精简版 | 默认（无 tag） | ~8.6 MB | 远端 Agent、CLI 自动化、服务器 |
+| 完整版 | `-tags tui` | ~9.6 MB | 桌面交互、双击启动 TUI 管理界面 |
+
+> 精简版不含交互式 TUI（bubbletea/lipgloss），所有 CLI 命令（push、exec、deploy-agent 等）正常可用。  
+> 远端 Agent 仅需 `receive` 子命令，使用精简版可减小约 1 MB 传输体积。
 
 支持的目标平台：`windows`、`darwin`、`linux` × `amd64`、`arm64`（`deploy-agent` 远端另支持 `arm`/`386`/`riscv64`）。
 
