@@ -87,13 +87,13 @@ jobs:
           echo "Before UPX: $(du -h ${{ matrix.artifact-name }} | cut -f1)"
 
       - name: Install UPX
-        if: matrix.goos != 'darwin'
+        if: matrix.goos != 'darwin' && !(matrix.goos == 'windows' && matrix.goarch == 'arm64')
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl
           upx --version | head -1
 
       - name: UPX compress (maximum)
-        if: matrix.goos != 'darwin'
+        if: matrix.goos != 'darwin' && !(matrix.goos == 'windows' && matrix.goarch == 'arm64')
         run: |
           upx --best --lzma --no-progress ${{ matrix.artifact-name }}
           echo "After UPX: $(du -h ${{ matrix.artifact-name }} | cut -f1)"
@@ -149,7 +149,7 @@ jobs:
             - 版本号: ${{ steps.version.outputs.ver }}
             - 构建日期: ${{ steps.date.outputs.builddate }}
             - CGO: 禁用（完全静态二进制，无 .so 依赖）
-            - UPX: 最大压缩（--best --lzma，macOS 除外）
+            - UPX: 最大压缩（--best --lzma，macOS / Windows ARM64 除外）
 
             ### 下载说明
 
