@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/winezer0/slogs"
 	"github.com/winezer0/syncgo/config"
 	"github.com/winezer0/syncgo/transport"
 )
@@ -79,6 +80,18 @@ type Syncer struct {
 	engine    *transport.SyncEngine
 	retry     config.RetryConfig
 	connected bool
+
+	// agentChecked/agentPresent cache the result of AgentExists per session.
+	// agentChecked/agentPresent 按会话缓存 AgentExists 的结果。
+	agentChecked bool
+	agentPresent bool
+
+	// LogFunc receives informational messages during auto-deploy and other
+	// background operations. If nil, messages are discarded.
+	// TUI/CLI can set this via SetLogger to route output appropriately.
+	// LogFunc 接收自动部署等后台操作的信息消息。
+	// 若为 nil 则丢弃消息。TUI/CLI 可通过 SetLogger 设置。
+	LogFunc func(msg string)
 }
 
 // NewSyncer creates a new Syncer from a full config and a server name.
@@ -260,7 +273,7 @@ func (s *Syncer) UploadDirWithOptionsContext(ctx context.Context, local, remote 
 
 	// Auto-deploy agent if missing, so delta transfers work out of the box.
 	if err := s.EnsureAgent(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "  [WARN] agent auto-deploy failed: %v (delta transfers disabled)\n", err)
+		slogs.Warn("agent auto-deploy failed; delta transfers disabled", "error", err)
 	}
 
 	mode := opts.Mode
@@ -355,7 +368,7 @@ func (s *Syncer) SyncTaskContext(ctx context.Context, task config.Task, dryRun b
 	// Auto-deploy agent if missing, so delta transfers work out of the box.
 	if !dryRun {
 		if err := s.EnsureAgent(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] agent auto-deploy failed: %v (delta transfers disabled)\n", err)
+			slogs.Warn("agent auto-deploy failed; delta transfers disabled", "error", err)
 		}
 	}
 
@@ -554,14 +567,32 @@ func (s *Syncer) SetHook(h transport.SyncHook) {
 	}
 }
 
-// EnsureAgent checks whether the syncgo agent is installed on the remote server.
-// If not, it automatically deploys the agent using the 4-level fallback strategy
-// (local file → GitHub release → embedded source compile → error).
-// This is called automatically before sync operations to enable delta transfers.
+// SetLogger sets the log function for informational messages (auto-deploy, etc.).
+// If fn is nil, messages are discarded.
+// SetLogger 设置信息消息的日志函数（自动部署等）。
+// fn 为 nil 则丢弃消息。
+func (s *Syncer) SetLogger(fn func(string)) {
+	s.LogFunc = fn
+}
+
+// log writes a message via LogFunc if set, otherwise uses slogs.Info.
+func (s *Syncer) log(msg string) {
+	if s.LogFunc != nil {
+		s.LogFunc(msg)
+	} else {
+		slogs.Info(msg)
+	}
+}
+
+// EnsureAgent checks whether the syncgo agent is installed and up-to-date on the remote.
+// If the agent is missing, it deploys via the 4-level fallback strategy.
+// If the agent exists but the version doesn't match the local version, it re-deploys.
+// Results are cached per session — subsequent calls are no-ops.
 //
-// EnsureAgent 检查远端是否已安装 syncgo agent。
-// 若未安装，自动通过四级回退策略部署 agent，以启用 delta 增量传输。
-// 同步操作前自动调用。
+// EnsureAgent 检查远端 syncgo agent 是否已安装且版本匹配。
+// 若 agent 缺失，通过四级回退策略部署。
+// 若 agent 已存在但版本不匹配，重新部署。
+// 结果按会话缓存，后续调用无操作。
 func (s *Syncer) EnsureAgent(ctx context.Context) error {
 	if !s.connected {
 		if err := s.ConnectContext(ctx); err != nil {
@@ -569,14 +600,26 @@ func (s *Syncer) EnsureAgent(ctx context.Context) error {
 		}
 	}
 
+	// Check if agent exists (cached)
 	if s.AgentExists() {
-		return nil
+		// Agent exists — check version match
+		remoteVer := s.AgentVersion()
+		localVer := config.DefaultVersion
+		if remoteVer == "" || remoteVer == localVer {
+			return nil // version matches or can't determine — skip
+		}
+		s.log(fmt.Sprintf("[auto-deploy] agent version mismatch: remote=%s local=%s, updating...", remoteVer, localVer))
+	} else {
+		s.log("[auto-deploy] agent not found on remote, deploying...")
 	}
 
-	// Agent not found — auto-deploy
+	// Invalidate cache before deploy so next check re-probes
+	s.agentChecked = false
+
+	// Deploy with progress routed through our logger
 	return s.DeployAgent(ctx, DeployAgentOptions{
 		Progress: func(msg string) {
-			fmt.Fprintf(os.Stderr, "  [auto-deploy] %s\n", msg)
+			s.log("[auto-deploy] " + msg)
 		},
 	})
 }

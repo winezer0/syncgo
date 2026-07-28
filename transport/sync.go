@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/slogs"
 )
 
 type SyncOptions struct {
@@ -113,8 +114,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		if listErr != nil {
 			// Listing was truncated or had errors — remote view is incomplete.
 			// Sync proceeds safely (no deletions for invisible files).
-			fmt.Fprintf(os.Stderr, "  [WARN] Remote listing incomplete on %s: %v\n", opts.Target, listErr)
-			fmt.Fprintf(os.Stderr, "    Delete pass skipped for unscanned directories.\n")
+			slogs.Warn("remote listing incomplete; delete pass skipped for unscanned directories", "target", opts.Target, "error", listErr)
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
@@ -133,7 +133,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	for _, lf := range localFiles {
 		relPath, relErr := filepath.Rel(opts.Source, lf.Path)
 		if relErr != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
+			slogs.Warn("filepath.Rel failed", "source", opts.Source, "path", lf.Path, "error", relErr)
 		}
 		if relPath == "." || relPath == "" {
 			relPath = filepath.Base(opts.Source)
@@ -288,7 +288,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		for _, lf := range localFiles {
 			rp, relErr := filepath.Rel(opts.Source, lf.Path)
 			if relErr != nil {
-				fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
+				slogs.Warn("filepath.Rel failed", "source", opts.Source, "path", lf.Path, "error", relErr)
 			}
 			if rp == "." || rp == "" {
 				rp = filepath.Base(opts.Source)
@@ -452,7 +452,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if agentBin == "" {
 		// No agent on remote, fallback to full upload.
 		// 远端无 agent，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta skipped: no syncgo agent on remote, full upload %s\n", info.Path)
+		slogs.Warn("delta skipped: no syncgo agent on remote, full upload", "path", info.Path)
 		if err := e.uploadFile(info, remotePath); err != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", err)
 		}
@@ -468,7 +468,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		// delta unavailable, fallback to full upload.
 		// delta 不可用，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta exec failed: %v, full upload %s\n", err, info.Path)
+		slogs.Warn("delta exec failed; full upload", "error", err, "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -490,7 +490,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		// 签名解码失败，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta signature decode failed: %v, full upload %s\n", err, info.Path)
+		slogs.Warn("delta signature decode failed; full upload", "error", err, "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -545,7 +545,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		// delta 搜索失败，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta search failed: %v, full upload %s\n", err, info.Path)
+		slogs.Warn("delta search failed; full upload", "error", err, "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -556,7 +556,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		// delta 编码失败，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta encode failed: %v, full upload %s\n", err, info.Path)
+		slogs.Warn("delta encode failed; full upload", "error", err, "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -567,7 +567,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		// delta 结束标记写入失败，回退全量上传。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta eos write failed: %v, full upload %s\n", err, info.Path)
+		slogs.Warn("delta eos write failed; full upload", "error", err, "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -584,7 +584,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		// The remote uses atomic rename, so the original file should still be
 		// intact, but fall back to full upload to guarantee correctness.
 		// 远端进程报告错误，但原子重命名保护了原文件，回退全量上传保证正确性。
-		fmt.Fprintf(os.Stderr, "  [WARN] delta remote error: %s, full upload %s\n", strings.TrimSpace(errBuf.String()), info.Path)
+		slogs.Warn("delta remote error; full upload", "remote_error", strings.TrimSpace(errBuf.String()), "path", info.Path)
 		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
 			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
 		}
@@ -624,7 +624,7 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 		}
 		relPath, relErr := filepath.Rel(root, path)
 		if relErr != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] ScanLocalFiles Rel(%q, %q): %v\n", root, path, relErr)
+			slogs.Warn("ScanLocalFiles Rel failed", "root", root, "path", path, "error", relErr)
 		}
 		for _, p := range excludes {
 			// 规范化模式：去掉尾部 / 以便匹配 filepath.Base 结果

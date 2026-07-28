@@ -162,17 +162,52 @@ func DeployAgentStandalone(ctx context.Context, server config.Server, opts Deplo
 	return s.DeployAgent(ctx, opts)
 }
 
-// AgentExists checks whether the syncgo agent binary is already installed on the remote.
+// AgentExists checks whether the syncgo agent binary is installed on the remote.
 // It tries PATH first, then common install locations (~/.local/bin, /usr/local/bin).
+// Results are cached per session to avoid redundant SSH exec calls.
 //
 // AgentExists 检查远端是否已安装 syncgo agent 二进制。
+// 结果按会话缓存，避免重复 SSH exec 调用。
 func (s *Syncer) AgentExists() bool {
+	if s.agentChecked {
+		return s.agentPresent
+	}
+	s.agentChecked = true
+
 	if !s.connected || s.tr == nil {
+		s.agentPresent = false
 		return false
 	}
-	cmd := `command -v syncgo 2>/dev/null || test -x $HOME/.local/bin/syncgo && echo found || test -x /usr/local/bin/syncgo && echo found || true`
+	// Clean logic: try PATH → ~/.local/bin → /usr/local/bin; echo "yes" if any found.
+	cmd := `command -v syncgo >/dev/null 2>&1 && echo yes || { test -x $HOME/.local/bin/syncgo && echo yes; } || { test -x /usr/local/bin/syncgo && echo yes; } || true`
 	out, err := s.tr.ExecOutput(cmd)
-	return err == nil && strings.TrimSpace(out) != ""
+	s.agentPresent = err == nil && strings.TrimSpace(out) == "yes"
+	return s.agentPresent
+}
+
+// AgentVersion returns the version string reported by the remote agent.
+// Returns empty string if the agent is not installed or cannot execute.
+//
+// AgentVersion 返回远端 agent 报告的版本号。
+// 若 agent 未安装或无法执行则返回空字符串。
+func (s *Syncer) AgentVersion() string {
+	if !s.connected || s.tr == nil {
+		return ""
+	}
+	cmd := `syncgo version 2>/dev/null || $HOME/.local/bin/syncgo version 2>/dev/null || /usr/local/bin/syncgo version 2>/dev/null || true`
+	out, err := s.tr.ExecOutput(cmd)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return ""
+	}
+	// Parse "SyncGo v0.0.7" → "0.0.7"
+	line := strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]
+	parts := strings.Fields(line)
+	for _, p := range parts {
+		if strings.HasPrefix(p, "v") && len(p) > 1 {
+			return strings.TrimPrefix(p, "v")
+		}
+	}
+	return ""
 }
 
 // --- Internal helpers (migrated from cmd/syncgo/deploy_agent.go) ---
