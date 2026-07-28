@@ -22,6 +22,14 @@ var (
 	algoName   string
 	schemaFlag bool
 
+	// ad-hoc push flags
+	adHocSource  string
+	adHocTarget  string
+	adHocDelete  bool
+	adHocFlat    bool
+	adHocChecksum bool
+	adHocExclude []string
+
 	rootCmd = &cobra.Command{
 		Use:   "syncgo",
 		Short: "Incremental file sync over SSH",
@@ -56,13 +64,20 @@ func main() {
 	// push
 	pushCmd := &cobra.Command{
 		Use:   "push [task name]",
-		Short: "Execute one or all sync tasks",
-		Long: `Run sync tasks defined in syncd.yaml.
+		Short: "Execute sync tasks (config or ad-hoc)",
+		Long: `Run sync tasks.
 
-If a task name is given, only that task runs. Otherwise all tasks
-are executed in order. Each task connects to its target server via
-SSH, compares local and remote files, and transfers only the
-differences (delta).
+Config mode (default): tasks and servers are defined in syncd.yaml.
+  syncgo push              sync all tasks
+  syncgo push web          sync only the "web" task
+
+Ad-hoc mode: bypass config with --source/--target.
+  syncgo push --source ./dist --target myserver:/var/www --delete
+
+Each task connects to its target server via SSH, compares local and
+remote files, and transfers changes. If the remote agent is installed,
+delta acceleration is used (only changed portions are sent). Without
+the agent, full files are uploaded instead -- sync still completes.
 
 Quick reference:
   SyncGo detects folder vs file from the filesystem, not from trailing
@@ -75,6 +90,13 @@ Quick reference:
 	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print per-file transfer details and wire bytes sent")
 	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "parallel delta workers (0 uses config default, 1=serial, max 8)")
 	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, sha256, xxh64, or xxh3 (overrides config)")
+	// ad-hoc mode: bypass config, sync directly from --source to --target
+	pushCmd.Flags().StringVar(&adHocSource, "source", "", "ad-hoc: local source path (file or directory)")
+	pushCmd.Flags().StringVar(&adHocTarget, "target", "", "ad-hoc: remote target (server:/path)")
+	pushCmd.Flags().BoolVar(&adHocDelete, "delete", false, "ad-hoc: delete remote files not in source")
+	pushCmd.Flags().BoolVar(&adHocFlat, "flat", false, "ad-hoc: map content directly without source folder wrapping")
+	pushCmd.Flags().BoolVar(&adHocChecksum, "checksum", false, "ad-hoc: use checksum to detect changes")
+	pushCmd.Flags().StringSliceVar(&adHocExclude, "exclude", nil, "ad-hoc: exclude patterns (comma-separated)")
 	rootCmd.AddCommand(pushCmd)
 
 	// tui (conditionally compiled with -tags tui)
@@ -156,6 +178,11 @@ func runVersion(cmd *cobra.Command, args []string) {
 }
 
 func runPush(cmd *cobra.Command, args []string) {
+	// Ad-hoc mode: --source + --target specified
+	if adHocSource != "" {
+		doAdHocSync(adHocSource, adHocTarget, adHocDelete, adHocFlat, adHocChecksum, adHocExclude, cfgPath, dryRun, verbose, workers, algoName)
+		return
+	}
 	taskName := ""
 	if len(args) > 0 {
 		taskName = args[0]

@@ -2,14 +2,15 @@
 
 # syncgo — 跨平台增量文件同步工具
 
-**syncgo** 是一个跨平台（Windows / macOS / Linux）的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。内置 [`delta`](delta/) 包（源自 [go-rsync](https://github.com/henryborner/go-rsync)）实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。纯 Go + Go 汇编实现，`CGO_ENABLED=0` 编译为完全静态二进制，无外部依赖。
+**syncgo** 是一个跨平台（Windows / macOS / Linux）的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送；也支持 `--source`/`--target` 免配置直接同步。使用外部依赖 [go-rsync](https://github.com/henryborner/go-rsync)（v0.4.0，含 ARM64 NEON 优化）实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。纯 Go + Go 汇编实现，`CGO_ENABLED=0` 编译为完全静态二进制，无外部依赖。
 
 > 原始项目请访问 [shuttle](https://github.com/henryborner/shuttle)
 
 ```powershell
-syncgo                    # 双击启动 TUI
-syncgo push web           # 一键同步
-syncgo exec vps "uptime"  # 远端执行命令
+syncgo                                # 双击启动 TUI
+syncgo push web                       # 一键同步
+syncgo push --source ./dist --target myserver:/var/www --delete  # 免配置直接同步
+syncgo exec vps "uptime"              # 远端执行命令
 ```
 
 ## 功能
@@ -17,7 +18,8 @@ syncgo exec vps "uptime"  # 远端执行命令
 - **跨平台** — Windows / macOS / Linux，支持 amd64 / arm64（Apple Silicon、AWS Graviton、树莓派）
 - **纯 Go 构建** — `CGO_ENABLED=0` 静态二进制，无 CGO、无 libc 依赖；TUI 条件编译（`-tags tui`），精简版仅 ~8.6 MB
 - **双同步模式** — `overlay`（增量覆盖）/ `full_replace`（tar.gz 压缩全量替换）
-- **增量传输** — rsync delta 算法，仅传输文件变化部分
+- **增量传输** — rsync delta 算法，仅传输文件变化部分；delta 失败自动回退全量上传并输出 WARN 日志
+- **Ad-hoc 同步** — `syncgo push --source ./dist --target server:/path` 免配置直接同步
 - **Task Hooks** — 同步前后自动执行远端命令（停服/重启/清缓存）
 - **远端命令** — `syncgo exec` 独立执行 SSH 命令，无需同步任务
 - **Agent 自动部署** — `syncgo deploy-agent` 三级回退（本地文件 → Release 下载 → 交叉编译）+ 远端执行验证
@@ -155,6 +157,7 @@ tasks:
 |------|------|
 | `syncgo` | 双击启动 TUI |
 | `syncgo push [name]` | 执行同步任务 |
+| `syncgo push --source X --target Y` | 免配置直接同步 |
 | `syncgo list` | 列出所有任务和服务器 |
 | `syncgo config` | 配置摘要 |
 | `syncgo config --schema` | 完整字段参考 |
@@ -172,9 +175,20 @@ tasks:
 |------|------|
 | `--dry-run` | 模拟运行，不实际修改文件 |
 | `-v` | 详细输出（含 delta 匹配字节） |
-| `-w N` | 并行 worker 数（默认 4） |
+| `-w N` | 并行 worker 数（默认 4，上限 8） |
 | `--algo md5\|xxh64\|xxh3\|sha256` | 校验和算法 |
 | `-c path` | 指定配置文件路径 |
+
+**Ad-hoc 模式参数**（绕过配置文件直接同步）：
+
+| 参数 | 说明 |
+|------|------|
+| `--source` | 本地源路径（文件或目录） |
+| `--target` | 远端目标（`server:/path`） |
+| `--delete` | 删除远端多余文件 |
+| `--flat` | 直接映射内容，不套源文件夹 |
+| `--checksum` | 用校验和检测变化 |
+| `--exclude` | 排除模式（逗号分隔） |
 
 ## 同步模式
 
@@ -382,7 +396,8 @@ s.SetHook(&transport.HookFunc{
 
 ```
 有 agent → delta 增量传输（仅传变化块）
-无 agent → 自动 fallback 全量 SFTP 上传
+无 agent → 自动 fallback 全量 SFTP 上传（输出 WARN 日志）
+delta 失败 → 自动 fallback 全量 SFTP 上传（输出 WARN 日志）
 ```
 
 ### 签名缓存

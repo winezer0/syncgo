@@ -328,3 +328,162 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		fmt.Println("Dry run complete — use 'syncgo push' to sync")
 	}
 }
+
+// doAdHocSync runs a sync directly from --source to --target, bypassing config tasks.
+// doAdHocSync 使用 --source/--target 参数直接同步，不依赖配置中的 task。
+func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []string, cfgPath string, dryRun, verbose bool, workers int, algoName string) {
+	if source == "" {
+		fmt.Fprintln(os.Stderr, "Error: --source is required")
+		os.Exit(1)
+	}
+	if target == "" {
+		fmt.Fprintln(os.Stderr, "Error: --target is required")
+		os.Exit(1)
+	}
+
+	// Resolve source: auto-detect folder vs file
+	srcInfo, err := os.Stat(source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: source not found: %v\n", err)
+		os.Exit(1)
+	}
+	srcType := "file"
+	if srcInfo.IsDir() {
+		srcType = "folder"
+	}
+
+	// Parse target: server name and remote path
+	serverName, remotePath := config.ParseTarget(target)
+	if serverName == "" {
+		fmt.Fprintln(os.Stderr, "Error: --target must be in format server:/path")
+		os.Exit(1)
+	}
+
+	// Load config for server lookup only
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	server := cfg.GetServer(serverName)
+	if server == nil {
+		fmt.Fprintf(os.Stderr, "Error: server '%s' not found in %s\n", serverName, cfgPath)
+		os.Exit(1)
+	}
+
+	// Apply checksum algorithm
+	if algoName != "" {
+		if err := delta.SetDefault(algoName); err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid --algo '%s': %v\n", algoName, err)
+			os.Exit(1)
+		}
+	} else if cfg.Checksum != "" {
+		if err := delta.SetDefault(cfg.Checksum); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid checksum '%s' in config: %v\n", cfg.Checksum, err)
+			fmt.Fprintf(os.Stderr, "  Using default: %s (fix the checksum field in syncd.yaml)\n", delta.GetDefault())
+		}
+	}
+
+	// Workers override
+	if workers <= 0 {
+		workers = cfg.Workers
+		if workers <= 0 {
+			workers = 4
+		}
+	}
+	if workers > 8 {
+		workers = 8
+	}
+
+	if dryRun {
+		fmt.Println("Dry run — no changes will be made")
+		fmt.Println()
+	}
+
+	fmt.Printf("Ad-hoc sync\n  Source: %s (%s)\n  Target: %s\n", source, srcType, target)
+
+	// Connect
+	fmt.Printf("  Connecting %s@%s:%d...\n", server.User, server.Host, server.Port)
+	sftp := transport.NewSFTP(transport.SFTPConfig{
+		Host: server.Host, Port: server.Port,
+		User:    server.User,
+		KeyFile: server.KeyFile, Pass: server.Pass,
+	})
+	if err := sftp.Connect(); err != nil {
+		fmt.Fprintf(os.Stderr, "  Connect failed: %v\n", err)
+		os.Exit(1)
+	}
+	defer sftp.Close()
+
+	engine := transport.NewSyncEngine(sftp)
+	engine.SetHook(&dryRunHook{dry: dryRun})
+
+	stats, syncErr := engine.Sync(transport.SyncOptions{
+		Source:   source,
+		Target:   remotePath,
+		Delete:   delete,
+		Exclude:  exclude,
+		Protect:  server.Protect,
+		Checksum: checksum,
+		DryRun:   dryRun,
+		SkipDots: true,
+		Workers:  workers,
+		Flat:     flat,
+	})
+	if syncErr != nil {
+		fmt.Fprintf(os.Stderr, "  Sync failed: %v\n", syncErr)
+		os.Exit(1)
+	}
+
+	if verbose {
+		printVerboseStats(stats, dryRun, verbose)
+	}
+
+	prefix := ""
+	if dryRun {
+		prefix = "[DRY RUN] "
+	}
+	fmt.Printf("  %sDone | files:%d new:%d updated:%d",
+		prefix, stats.TotalFiles, stats.NewFiles, stats.UpdatedFiles)
+	if stats.SkippedFiles > 0 {
+		fmt.Printf(" skipped:%d", stats.SkippedFiles)
+	}
+	if stats.ProtectedFiles > 0 {
+		fmt.Printf(" protected:%d", stats.ProtectedFiles)
+	}
+	if stats.DeletedFiles > 0 {
+		fmt.Printf(" deleted:%d", stats.DeletedFiles)
+	}
+	if stats.DeltaFiles > 0 {
+		fmt.Printf(" delta:%d", stats.DeltaFiles)
+	}
+	fmt.Printf(" | %s total", util.FormatBytes(stats.TotalBytes))
+	if stats.SentBytes > 0 {
+		savedPct := float64(0)
+		if stats.TotalBytes > 0 {
+			savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
+		}
+		fmt.Printf("  sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
+	}
+	if len(stats.Errors) > 0 {
+		fmt.Printf(" | errors:%d", len(stats.Errors))
+	}
+	fmt.Println()
+
+	if dryRun {
+		fmt.Println("Dry run complete — remove --dry-run to sync")
+	}
+}
+
+// printVerboseStats prints detailed sync statistics.
+func printVerboseStats(stats *transport.SyncStats, dryRun, verbose bool) {
+	if verbose && stats.DeltaSaved > 0 {
+		fmt.Printf("  delta-matched: %s\n", util.FormatBytes(stats.DeltaSaved))
+	}
+	if len(stats.Errors) > 0 && verbose {
+		fmt.Println("  Errors:")
+		for _, e := range stats.Errors {
+			fmt.Printf("    - %v\n", e)
+		}
+	}
+}

@@ -451,8 +451,12 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	agentBin := e.detectAgentPath()
 	if agentBin == "" {
 		// No agent on remote, fallback to full upload.
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta unavailable: no syncgo agent on remote")
+		// 远端无 agent，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta skipped: no syncgo agent on remote, full upload %s\n", info.Path)
+		if err := e.uploadFile(info, remotePath); err != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", err)
+		}
+		return info.Size, 0, nil
 	}
 
 	algo := delta.GetDefault()
@@ -463,8 +467,12 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		// delta unavailable, fallback to full upload.
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
+		// delta 不可用，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta exec failed: %v, full upload %s\n", err, info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 
 	// read stderr concurrently
@@ -481,8 +489,12 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
+		// 签名解码失败，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta signature decode failed: %v, full upload %s\n", err, info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 
 	// Open local file for streaming (no mmap, no full read into memory).
@@ -532,22 +544,34 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta search: %w", err)
+		// delta 搜索失败，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta search failed: %v, full upload %s\n", err, info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 	// Flush remaining batch.
 	if err := flushBatch(); err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta encode: %w", err)
+		// delta 编码失败，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta encode failed: %v, full upload %s\n", err, info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 	// End-of-stream marker: count=0 tells receiver we're done.
 	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta eos: %w", err)
+		// delta 结束标记写入失败，回退全量上传。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta eos write failed: %v, full upload %s\n", err, info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 
 	// Instructions already streamed to remote via the callback above.
@@ -559,8 +583,12 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		// Remote process reported an error after receiving instructions.
 		// The remote uses atomic rename, so the original file should still be
 		// intact, but fall back to full upload to guarantee correctness.
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("remote: %s", errBuf.String())
+		// 远端进程报告错误，但原子重命名保护了原文件，回退全量上传保证正确性。
+		fmt.Fprintf(os.Stderr, "  [WARN] delta remote error: %s, full upload %s\n", strings.TrimSpace(errBuf.String()), info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
 	}
 
 	e.transport.SetModTime(remotePath, info.ModTime)

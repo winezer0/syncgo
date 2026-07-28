@@ -2,14 +2,15 @@
 
 # syncgo — cross-platform rsync-style delta sync
 
-**syncgo** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push. Ships with a built-in [`delta`](delta/) package (derived from [go-rsync](https://github.com/henryborner/go-rsync)) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
+**syncgo** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push; or use `--source`/`--target` for config-free ad-hoc sync. Uses the external [go-rsync](https://github.com/henryborner/go-rsync) dependency (v0.4.0, with ARM64 NEON optimizations) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
 
 > Original project: [shuttle](https://github.com/henryborner/shuttle)
 
 ```powershell
-syncgo                    # double-click to launch TUI
-syncgo push web           # sync a task
-syncgo exec vps "uptime"  # run remote command
+syncgo                                # double-click to launch TUI
+syncgo push web                       # sync a task
+syncgo push --source ./dist --target myserver:/var/www --delete  # ad-hoc sync, no config needed
+syncgo exec vps "uptime"              # run remote command
 ```
 
 ## Features
@@ -17,7 +18,8 @@ syncgo exec vps "uptime"  # run remote command
 - **Cross-platform** — Windows / macOS / Linux, amd64 / arm64 (Apple Silicon, AWS Graviton, Raspberry Pi)
 - **Pure Go build** — `CGO_ENABLED=0` static binaries, no CGO, no libc; conditional TUI compilation (`-tags tui`), lite build only ~8.6 MB
 - **Dual sync modes** — `overlay` (incremental) / `full_replace` (tar.gz pack & replace)
-- **Delta transfer** — rsync algorithm, only changed blocks are transmitted
+- **Delta transfer** — rsync algorithm, only changed blocks are transmitted; auto-fallback to full upload with WARN log on delta failure
+- **Ad-hoc sync** — `syncgo push --source ./dist --target server:/path` for config-free direct sync
 - **Task Hooks** — Run remote commands before/after sync (stop/start services, clear cache)
 - **Remote exec** — `syncgo exec` for standalone SSH commands, no sync task needed
 - **Agent auto-deploy** — `syncgo deploy-agent` with three-level fallback (local file → release download → cross-compile) + remote execution verification
@@ -155,6 +157,7 @@ tasks:
 |---------|-------------|
 | `syncgo` | Double-click for TUI |
 | `syncgo push [name]` | Sync tasks |
+| `syncgo push --source X --target Y` | Ad-hoc sync (no config) |
 | `syncgo list` | List all tasks and servers |
 | `syncgo config` | Config summary |
 | `syncgo config --schema` | Full field reference |
@@ -172,9 +175,20 @@ tasks:
 |------|-------------|
 | `--dry-run` | Preview only, no changes |
 | `-v` | Verbose output (includes delta-matched bytes) |
-| `-w N` | Parallel workers (default 4) |
+| `-w N` | Parallel workers (default 4, max 8) |
 | `--algo md5\|xxh64\|xxh3\|sha256` | Checksum algorithm |
 | `-c path` | Config file path |
+
+**Ad-hoc mode flags** (bypass config file for direct sync):
+
+| Flag | Description |
+|------|-------------|
+| `--source` | Local source path (file or directory) |
+| `--target` | Remote target (`server:/path`) |
+| `--delete` | Delete remote files not in source |
+| `--flat` | Map content directly without source folder wrapping |
+| `--checksum` | Use checksum to detect changes |
+| `--exclude` | Exclude patterns (comma-separated) |
 
 ## Sync Modes
 
@@ -381,8 +395,9 @@ If files are identical, only the signature list (a few KB) is transferred — no
 ### Smart Tiering
 
 ```
-Agent available → delta incremental transfer (only changed blocks)
-No agent       → automatic fallback to full SFTP upload
+Agent available  → delta incremental transfer (only changed blocks)
+No agent         → automatic fallback to full SFTP upload (WARN log)
+Delta failure    → automatic fallback to full SFTP upload (WARN log)
 ```
 
 ### Signature Cache
