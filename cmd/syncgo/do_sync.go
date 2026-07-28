@@ -29,15 +29,40 @@ var highRiskDryExts = map[string]string{
 type dryRunHook struct {
 	dry          bool
 	deletedFiles []string
+	hasProgress  bool // whether a progress bar was displayed / 是否显示过进度条
 }
 
 func (h *dryRunHook) OnSyncStart(name string, total int) error {
 	fmt.Printf("  %d files to check...\n", total)
 	return nil
 }
-func (h *dryRunHook) OnFileStart(path string, size int64) error     { return nil }
-func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {}
+func (h *dryRunHook) OnFileStart(path string, size int64) error {
+	h.hasProgress = false
+	return nil
+}
+func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
+	if total <= 0 {
+		return
+	}
+	h.hasProgress = true
+	pct := int(sent * 100 / total)
+	if pct > 100 {
+		pct = 100
+	}
+	barWidth := 20
+	filled := pct * barWidth / 100
+	bar := strings.Repeat("=", filled)
+	if filled < barWidth {
+		bar += ">" + strings.Repeat(" ", barWidth-filled-1)
+	}
+	fmt.Printf("\r  %s  [%s] %d%%  %s/%s",
+		util.Pad(filepath.Base(path), 24), bar, pct,
+		util.FormatBytes(sent), util.FormatBytes(total))
+}
 func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
+	// Always clear line to prevent progress bar leakage from parallel workers.
+	// 始终清行，防止并行 worker 的进度条残留串行。
+	fmt.Print("\r", strings.Repeat(" ", 80), "\r")
 	switch {
 	case evt.IsNew:
 		fmt.Printf("  %s  %s\n", util.Pad("NEW", 5), evt.RelPath)
@@ -110,6 +135,9 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		if workers <= 0 {
 			workers = 4
 		}
+	}
+	if workers > 8 {
+		workers = 8
 	}
 
 	var tasks []config.Task

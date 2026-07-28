@@ -3,8 +3,13 @@ package util
 
 import "fmt"
 
-// FormatBytes formats a byte count as a human-readable string (e.g. "1.5 MB").
+// FormatBytes formats a byte count as a human-readable string using binary
+// prefixes (e.g. "1.5 MiB", base-1024).
+// FormatBytes 将字节数格式化为人类可读字符串（如 "1.5 MiB"，基数为 1024）。
 func FormatBytes(b int64) string {
+	if b < 0 {
+		return "0 B"
+	}
 	const unit = 1024
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
@@ -14,7 +19,7 @@ func FormatBytes(b int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // Pad pads s to width with spaces on the right.

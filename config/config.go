@@ -12,7 +12,9 @@ import (
 
 // DefaultVersion is the fallback version used when no -ldflags override is provided.
 // DefaultVersion 未通过 -ldflags 覆盖时的回退版本号。
-const DefaultVersion = "v0.0.3"
+// Uniform agreement: DefaultVersion does not have the "v" prefix
+// 统一约定：DefaultVersion 不带 v 前缀
+const DefaultVersion = "0.0.5"
 
 // SyncMode defines the synchronization strategy.
 // SyncMode 定义同步策略。

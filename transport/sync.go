@@ -91,25 +91,31 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	remoteFiles := make(map[string]FileInfo)
-	// scan remote target root once; avoid repeated Walk for each subdirectory
-	// 从远端 target 根目录只遍历一次，避免对每个子目录重复 Walk
-	entries, listErr := e.transport.ListDirRecursive(opts.Target)
-	// Always use partial results even when the listing was truncated or had
-	// errors — an empty remoteFiles map would treat all local files as NEW
-	// and skip all deletions, which is wasteful but safe.
-	for _, f := range entries {
-		key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
-		// TrimLeft removes all leading slashes, handling edge cases like
-		// double-slashes from SFTP servers (e.g. /tmp//assets/file.js).
-		// TrimPrefix would only remove one, leaving a leading / that
-		// causes the key to mismatch localSet → false orphan → data loss.
-		key = strings.TrimLeft(key, "/")
-		remoteFiles[key] = f
-	}
-	if listErr != nil {
-		// Listing was truncated or had errors — remote view is incomplete.
-		// Sync proceeds safely (no deletions for invisible files) but some
-		// files may be unnecessarily re-uploaded.
+	remoteScanned := false
+
+	// Full recursive scan is only needed for --delete (to find orphan files).
+	// Without --delete, we Stat each remote file on demand — much faster for
+	// large directories like /tmp/.
+	// 全量递归扫描仅 --delete 需要（发现远端孤儿文件）。
+	// 不用 delete 时按需 Stat 每个远端文件，对大目录（如 /tmp/）快得多。
+	if opts.Delete {
+		entries, listErr := e.transport.ListDirRecursive(opts.Target)
+		for _, f := range entries {
+			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
+			// TrimLeft removes all leading slashes, handling edge cases like
+			// double-slashes from SFTP servers (e.g. /tmp//assets/file.js).
+			// TrimPrefix would only remove one, leaving a leading / that
+			// causes the key to mismatch localSet → false orphan → data loss.
+			key = strings.TrimLeft(key, "/")
+			remoteFiles[key] = f
+		}
+		remoteScanned = true
+		if listErr != nil {
+			// Listing was truncated or had errors — remote view is incomplete.
+			// Sync proceeds safely (no deletions for invisible files).
+			fmt.Fprintf(os.Stderr, "  [WARN] Remote listing incomplete on %s: %v\n", opts.Target, listErr)
+			fmt.Fprintf(os.Stderr, "    Delete pass skipped for unscanned directories.\n")
+		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
@@ -125,7 +131,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	var deltaJobs []deltaJob
 
 	for _, lf := range localFiles {
-		relPath, _ := filepath.Rel(opts.Source, lf.Path)
+		relPath, relErr := filepath.Rel(opts.Source, lf.Path)
+		if relErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
+		}
 		if relPath == "." || relPath == "" {
 			relPath = filepath.Base(opts.Source)
 		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
@@ -133,6 +142,13 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
+		if !exists && !remoteScanned {
+			// No full scan done — Stat just this file on remote
+			if fi, statErr := e.transport.Stat(remotePath); statErr == nil {
+				rf = fi
+				exists = true
+			}
+		}
 
 		// protect check: remote exists and matches protect pattern → skip
 		// 保护检查：远端已有且匹配 protect 模式 → 禁止覆盖
@@ -212,9 +228,19 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		for _, dj := range deltaJobs {
 			go func(job deltaJob) {
 				sem <- struct{}{}
+				defer func() {
+					if r := recover(); r != nil {
+						resultCh <- struct {
+							job   deltaJob
+							sent  int64
+							saved int64
+							err   error
+						}{job, 0, 0, fmt.Errorf("delta panic: %v", r)}
+					}
+					<-sem
+				}()
 				e.hook.OnFileStart(job.relPath, job.lf.Size)
 				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
-				<-sem
 				resultCh <- struct {
 					job   deltaJob
 					sent  int64
@@ -260,7 +286,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		localSet := make(map[string]bool, len(localFiles))
 		neededDirs := make(map[string]bool)
 		for _, lf := range localFiles {
-			rp, _ := filepath.Rel(opts.Source, lf.Path)
+			rp, relErr := filepath.Rel(opts.Source, lf.Path)
+			if relErr != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
+			}
 			if rp == "." || rp == "" {
 				rp = filepath.Base(opts.Source)
 			} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
@@ -565,7 +594,10 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 		if err != nil {
 			return err
 		}
-		relPath, _ := filepath.Rel(root, path)
+		relPath, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] ScanLocalFiles Rel(%q, %q): %v\n", root, path, relErr)
+		}
 		for _, p := range excludes {
 			// 规范化模式：去掉尾部 / 以便匹配 filepath.Base 结果
 			pat := strings.TrimRight(p, "/")
@@ -629,8 +661,11 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 	return files, err
 }
 
+// MatchProtect checks whether a path matches any protect pattern.
+// Patterns ending with "/" trigger recursive prefix matching (protects entire directory tree);
+// otherwise glob matching is used (basename + full path).
 // MatchProtect 检查给定路径是否匹配任一保护模式
-// 同时匹配 basename 和完整路径，目录匹配时整个目录被保护
+// 以 "/" 结尾的 pattern 做前缀匹配（保护整个目录树），否则做 glob 匹配（basename + 全路径）。
 func MatchProtect(path string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return false
@@ -638,11 +673,28 @@ func MatchProtect(path string, patterns []string) bool {
 	slashPath := filepath.ToSlash(path)
 	base := filepath.Base(path)
 	for _, p := range patterns {
-		pat := strings.TrimRight(p, "/")
-		if ok, _ := filepath.Match(pat, base); ok {
+		// trailing "/" → prefix match: protect entire directory tree
+		// 以 "/" 结尾 → 前缀匹配：保护整个目录树
+		if strings.HasSuffix(p, "/") {
+			dir := strings.TrimRight(p, "/")
+			// file directly under the dir: "secrets/token.pem"
+			if strings.HasPrefix(slashPath, p) {
+				return true
+			}
+			// file deep in tree: "/var/secrets/db/creds.txt"
+			if strings.Contains(slashPath, "/"+p) {
+				return true
+			}
+			// the directory itself: "secrets" or "/var/secrets"
+			if slashPath == dir || strings.HasSuffix(slashPath, "/"+dir) {
+				return true
+			}
+			continue
+		}
+		if ok, _ := filepath.Match(p, base); ok {
 			return true
 		}
-		if ok, _ := filepath.Match(pat, slashPath); ok {
+		if ok, _ := filepath.Match(p, slashPath); ok {
 			return true
 		}
 	}
