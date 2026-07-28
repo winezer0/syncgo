@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/winezer0/syncgo/config"
-	"github.com/winezer0/syncgo/delta"
+	"github.com/henryborner/go-rsync"
 	"github.com/winezer0/syncgo/transport"
 	"github.com/winezer0/syncgo/util"
 )

@@ -19,7 +19,7 @@ import (
 	"github.com/winezer0/syncgo/util"
 
 	"github.com/spf13/cobra"
-	"github.com/winezer0/syncgo/delta"
+	"github.com/henryborner/go-rsync"
 )
 
 // cacheDir returns the signature cache directory (~/.syncgo_cache/).

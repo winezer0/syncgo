@@ -13,7 +13,7 @@ import (
 	"github.com/winezer0/syncgo/transport"
 	"github.com/winezer0/syncgo/util"
 
-	delta "github.com/winezer0/syncgo/delta"
+	"github.com/henryborner/go-rsync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
