@@ -2,12 +2,14 @@
 // en.go — 英语翻译
 package i18n
 
+import "github.com/winezer0/syncgo/config"
+
 func init() {
 	register(EN, map[string]string{
 		// App
 		"app.title":        "SyncGo",
 		"app.subtitle":     "Incremental File Sync",
-		"app.version":      " v0.0.1.0",
+		"app.version":      config.DefaultVersion,
 		"app.connected":    "Connected",
 		"app.disconnected": "Disconnected",
 

@@ -26,7 +26,7 @@ of files are sent over the network instead of full file content.
 
 Agent binary resolution order:
   1. Local file: syncgo_linux_<arch> in the program directory
-  2. Download from GitHub Releases (v` + versionStr + `)
+  2. Download from GitHub Releases (v` + config.DefaultVersion + `)
   3. Cross-compile from source (requires local Go toolchain)
 
 Steps performed:
@@ -65,7 +65,7 @@ func runDeployAgent(cmd *cobra.Command, args []string) {
 	defer s.Close()
 
 	opts := syncer.DeployAgentOptions{
-		Version: versionStr,
+		Version: config.DefaultVersion,
 		Progress: func(msg string) {
 			fmt.Println("  " + msg)
 		},

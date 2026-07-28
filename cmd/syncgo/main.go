@@ -9,9 +9,9 @@ import (
 
 	"strings"
 
+	"github.com/henryborner/go-rsync"
 	"github.com/spf13/cobra"
 	"github.com/winezer0/syncgo/config"
-	"github.com/henryborner/go-rsync"
 )
 
 var (
@@ -22,8 +22,7 @@ var (
 	algoName   string
 	schemaFlag bool
 
-	versionStr = "0.0.2"
-	rootCmd    = &cobra.Command{
+	rootCmd = &cobra.Command{
 		Use:   "syncgo",
 		Short: "Incremental file sync over SSH",
 		Long: `SyncGo syncs local directories to remote Linux servers over SSH.
@@ -42,7 +41,7 @@ Getting started:
   syncgo config --schema      full field reference with examples
   syncgo push                 run all sync tasks
   syncgo exec <server> "cmd"  run a remote SSH command`,
-		Version: versionStr,
+		Version: config.DefaultVersion,
 	}
 )
 
@@ -148,7 +147,7 @@ Next steps:
 }
 
 func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Printf("SyncGo v%s\n", versionStr)
+	fmt.Printf("SyncGo v%s\n", config.DefaultVersion)
 	fmt.Printf("  Go:     %s\n", runtime.Version())
 	fmt.Printf("  OS:     %s\n", runtime.GOOS)
 	fmt.Printf("  Arch:   %s\n", runtime.GOARCH)

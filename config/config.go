@@ -12,7 +12,7 @@ import (
 
 // DefaultVersion is the fallback version used when no -ldflags override is provided.
 // DefaultVersion 未通过 -ldflags 覆盖时的回退版本号。
-const DefaultVersion = "0.0.3"
+const DefaultVersion = "v0.0.3"
 
 // SyncMode defines the synchronization strategy.
 // SyncMode 定义同步策略。
@@ -26,7 +26,6 @@ const (
 	// 压缩全量替换模式：本地打包上传，远端解压覆盖，清理冗余文件。
 	SyncFullReplace SyncMode = "full_replace"
 )
-
 
 // RetryConfig holds retry policy for transient failures.
 // RetryConfig 瞬态失败重试策略。
@@ -62,8 +61,8 @@ const (
 // Hooks defines remote commands to execute before/after sync.
 // Hooks 定义同步前后执行的远端命令。
 type Hooks struct {
-	Before  []string        `yaml:"before,omitempty"`  // commands before sync / 同步前命令
-	After   []string        `yaml:"after,omitempty"`   // commands after sync / 同步后命令
+	Before  []string        `yaml:"before,omitempty"`   // commands before sync / 同步前命令
+	After   []string        `yaml:"after,omitempty"`    // commands after sync / 同步后命令
 	OnError HookErrorPolicy `yaml:"on_error,omitempty"` // abort / warn / ignore (default abort)
 }
 
@@ -95,13 +94,13 @@ func (o Options) IsIncremental(globalDefault bool) bool {
 }
 
 type Server struct {
-	Name     string   `yaml:"name"`
-	Host     string   `yaml:"host"`
-	Port     int      `yaml:"port"`
-	User     string   `yaml:"user"`
-	KeyFile  string   `yaml:"key_file"`            // SSH private key path / SSH 私钥路径
-	Pass     string   `yaml:"password"`            // or password (not recommended) / 或密码（不推荐）
-	Protect  []string `yaml:"protect,omitempty"`   // protect patterns: remote files never overwritten/deleted / 保护模式
+	Name    string   `yaml:"name"`
+	Host    string   `yaml:"host"`
+	Port    int      `yaml:"port"`
+	User    string   `yaml:"user"`
+	KeyFile string   `yaml:"key_file"`          // SSH private key path / SSH 私钥路径
+	Pass    string   `yaml:"password"`          // or password (not recommended) / 或密码（不推荐）
+	Protect []string `yaml:"protect,omitempty"` // protect patterns: remote files never overwritten/deleted / 保护模式
 }
 
 // Config is the top-level configuration.
