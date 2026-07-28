@@ -258,6 +258,11 @@ func (s *Syncer) UploadDirWithOptionsContext(ctx context.Context, local, remote 
 		}
 	}
 
+	// Auto-deploy agent if missing, so delta transfers work out of the box.
+	if err := s.EnsureAgent(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] agent auto-deploy failed: %v (delta transfers disabled)\n", err)
+	}
+
 	mode := opts.Mode
 	if mode == "" {
 		mode = config.SyncOverlayPatch
@@ -344,6 +349,13 @@ func (s *Syncer) SyncTaskContext(ctx context.Context, task config.Task, dryRun b
 	if !s.connected {
 		if err := s.ConnectContext(ctx); err != nil {
 			return nil, err
+		}
+	}
+
+	// Auto-deploy agent if missing, so delta transfers work out of the box.
+	if !dryRun {
+		if err := s.EnsureAgent(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] agent auto-deploy failed: %v (delta transfers disabled)\n", err)
 		}
 	}
 
@@ -540,6 +552,33 @@ func (s *Syncer) SetHook(h transport.SyncHook) {
 	if s.engine != nil {
 		s.engine.SetHook(h)
 	}
+}
+
+// EnsureAgent checks whether the syncgo agent is installed on the remote server.
+// If not, it automatically deploys the agent using the 4-level fallback strategy
+// (local file → GitHub release → embedded source compile → error).
+// This is called automatically before sync operations to enable delta transfers.
+//
+// EnsureAgent 检查远端是否已安装 syncgo agent。
+// 若未安装，自动通过四级回退策略部署 agent，以启用 delta 增量传输。
+// 同步操作前自动调用。
+func (s *Syncer) EnsureAgent(ctx context.Context) error {
+	if !s.connected {
+		if err := s.ConnectContext(ctx); err != nil {
+			return err
+		}
+	}
+
+	if s.AgentExists() {
+		return nil
+	}
+
+	// Agent not found — auto-deploy
+	return s.DeployAgent(ctx, DeployAgentOptions{
+		Progress: func(msg string) {
+			fmt.Fprintf(os.Stderr, "  [auto-deploy] %s\n", msg)
+		},
+	})
 }
 
 // Close releases all resources (SSH + SFTP connections).

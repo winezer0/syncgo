@@ -143,3 +143,48 @@ func TestGetLocalArch(t *testing.T) {
 		t.Logf("getLocalArch() = %q (not in common set, but may be valid)", arch)
 	}
 }
+
+func TestCrossCompileEmbedded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping cross-compile test in short mode")
+	}
+	// Verify that the embedded agent source can be cross-compiled for linux/amd64.
+	// This is the core capability that enables agent deployment even when
+	// syncgo is used as a library (go get).
+	binary, err := crossCompileEmbedded("amd64")
+	if err != nil {
+		t.Fatalf("crossCompileEmbedded(amd64): %v", err)
+	}
+	defer os.Remove(binary)
+
+	// Verify the binary was actually created and is non-empty
+	fi, err := os.Stat(binary)
+	if err != nil {
+		t.Fatalf("stat compiled binary: %v", err)
+	}
+	if fi.Size() < 1000 {
+		t.Errorf("binary too small: %d bytes, expected at least 1KB", fi.Size())
+	}
+	t.Logf("embedded cross-compile succeeded: %s (%.1f MB)", binary, float64(fi.Size())/1024/1024)
+}
+
+func TestEmbeddedAgentSource(t *testing.T) {
+	// Verify the embedded FS contains the expected files
+	required := []string{
+		"agent/receive.go",
+		"agent/mmap.go",
+		"agent/mmap_unix.go",
+		"agent/mmap_windows.go",
+		"agent/cmd/syncgo-agent/main.go",
+	}
+	for _, name := range required {
+		data, err := agentSource.ReadFile(name)
+		if err != nil {
+			t.Errorf("agentSource.ReadFile(%q): %v", name, err)
+			continue
+		}
+		if len(data) == 0 {
+			t.Errorf("agentSource.ReadFile(%q): empty file", name)
+		}
+	}
+}

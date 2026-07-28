@@ -27,7 +27,11 @@ of files are sent over the network instead of full file content.
 Agent binary resolution order:
   1. Local file: syncgo_linux_<arch> in the program directory
   2. Download from GitHub Releases (v` + config.DefaultVersion + `)
-  3. Cross-compile from source (requires local Go toolchain)
+  3. Cross-compile from embedded source (requires local Go toolchain)
+
+NOTE: Agent deployment also happens automatically during 'syncgo push'
+if the remote has no agent installed. You rarely need to run this
+command manually.
 
 Steps performed:
   1. Connect to the server and detect CPU architecture (uname -m)

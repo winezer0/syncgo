@@ -14,7 +14,7 @@ import (
 // DefaultVersion 未通过 -ldflags 覆盖时的回退版本号。
 // Uniform agreement: DefaultVersion does not have the "v" prefix
 // 统一约定：DefaultVersion 不带 v 前缀
-const DefaultVersion = "0.0.6"
+const DefaultVersion = "0.0.7"
 
 // SyncMode defines the synchronization strategy.
 // SyncMode 定义同步策略。

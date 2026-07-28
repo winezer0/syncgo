@@ -1,8 +1,8 @@
 // deploy_agent.go — Deploy syncgo agent to remote Linux server (library API).
-// Strategy: local pre-built binary → GitHub Release download → cross-compile.
+// Strategy: local pre-built binary → GitHub Release download → embedded cross-compile.
 //
 // deploy_agent.go — 部署 syncgo agent 到远端 Linux 服务器（库 API）。
-// 策略：本地预构建二进制 → GitHub Release 下载 → 交叉编译。
+// 策略：本地预构建二进制 → GitHub Release 下载 → 嵌入源码交叉编译。
 package syncer
 
 import (
@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -35,20 +36,13 @@ type DeployAgentOptions struct {
 	// BinaryPath 可选的预构建 agent 二进制路径，设置后直接使用，跳过本地查找和下载。
 	BinaryPath string
 
-	// ProjectRoot is the syncgo source tree root (containing go.mod).
-	// Required only for the cross-compile fallback (Level 3).
-	// If empty, cross-compile will attempt to locate go.mod automatically.
-	// ProjectRoot syncgo 源码根目录（含 go.mod），仅交叉编译回退（Level 3）需要。
-	// 为空时自动查找。
-	ProjectRoot string
-
 	// Progress callback for deployment status updates.
 	// Progress 部署状态更新回调。
 	Progress func(msg string)
 }
 
 // DeployAgent deploys the syncgo agent binary to the remote server.
-// It connects, detects remote architecture, resolves the binary (3-level fallback),
+// It connects, detects remote architecture, resolves the binary (4-level fallback),
 // uploads it to ~/.local/bin/syncgo, sets permissions, and verifies execution.
 //
 // DeployAgent 将 syncgo agent 二进制部署到远端服务器。
@@ -168,6 +162,19 @@ func DeployAgentStandalone(ctx context.Context, server config.Server, opts Deplo
 	return s.DeployAgent(ctx, opts)
 }
 
+// AgentExists checks whether the syncgo agent binary is already installed on the remote.
+// It tries PATH first, then common install locations (~/.local/bin, /usr/local/bin).
+//
+// AgentExists 检查远端是否已安装 syncgo agent 二进制。
+func (s *Syncer) AgentExists() bool {
+	if !s.connected || s.tr == nil {
+		return false
+	}
+	cmd := `command -v syncgo 2>/dev/null || test -x $HOME/.local/bin/syncgo && echo found || test -x /usr/local/bin/syncgo && echo found || true`
+	out, err := s.tr.ExecOutput(cmd)
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
 // --- Internal helpers (migrated from cmd/syncgo/deploy_agent.go) ---
 
 // detectRemoteArch runs uname -m on the remote to get CPU architecture.
@@ -197,11 +204,11 @@ func unameToGoArch(uname string) string {
 	}
 }
 
-// resolveAgentBinary resolves the agent binary using three-level fallback:
+// resolveAgentBinary resolves the agent binary using multi-level fallback:
 // 1. Explicit BinaryPath from options
 // 2. Local pre-built file (syncgo_linux_<arch> in exe/CWD directory)
 // 3. Download from GitHub Releases
-// 4. Cross-compile from source (requires Go toolchain + project root)
+// 4. Cross-compile from embedded source (go:embed, works even as library)
 func resolveAgentBinary(goArch string, opts DeployAgentOptions) (string, func(), error) {
 	// Level 0: explicit binary path
 	if opts.BinaryPath != "" {
@@ -226,20 +233,13 @@ func resolveAgentBinary(goArch string, opts DeployAgentOptions) (string, func(),
 		return downloaded, func() { os.Remove(downloaded) }, nil
 	}
 
-	// Level 3: cross-compile
-	projectRoot := opts.ProjectRoot
-	if projectRoot == "" {
-		var findErr error
-		projectRoot, findErr = findProjectRoot()
-		if findErr != nil {
-			return "", nil, fmt.Errorf("all methods failed; download error: %w; cross-compile: cannot find project root: %v", err, findErr)
-		}
+	// Level 3: cross-compile from embedded source (works even as library)
+	embedded, embedErr := crossCompileEmbedded(goArch)
+	if embedErr == nil {
+		return embedded, func() { os.Remove(embedded) }, nil
 	}
-	tmpBinary, crossErr := crossCompile(goArch, projectRoot)
-	if crossErr != nil {
-		return "", nil, fmt.Errorf("all methods failed; download error: %w; cross-compile error: %v", err, crossErr)
-	}
-	return tmpBinary, func() { os.Remove(tmpBinary) }, nil
+
+	return "", nil, fmt.Errorf("all methods failed; download: %v; embedded compile: %v", err, embedErr)
 }
 
 // findLocalAgent looks for a pre-built agent binary in the executable's directory or CWD.
@@ -367,8 +367,54 @@ func getLatestReleaseVersion() (string, error) {
 	return strings.TrimPrefix(result.TagName, "v"), nil
 }
 
-// crossCompile builds the syncgo binary for linux/<goArch>.
-func crossCompile(goArch, projectRoot string) (string, error) {
+// crossCompileEmbedded cross-compiles the agent from the embedded source tree.
+// It extracts the embedded agent source to a temp directory, generates a standalone
+// go.mod, and runs go build. This works even when syncgo is used as a library
+// (go get), since the agent source is baked into the binary via go:embed.
+//
+// crossCompileEmbedded 从嵌入的源码树交叉编译 agent。
+// 将嵌入的 agent 源码提取到临时目录，生成独立的 go.mod，然后执行 go build。
+// 即使 syncgo 作为库使用（go get）也能工作，因为 agent 源码通过 go:embed 烘焙进了二进制。
+func crossCompileEmbedded(goArch string) (string, error) {
+	// Create temp directory for extracted source
+	tmpDir, err := os.MkdirTemp("", "syncgo_agent_src_*")
+	if err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Extract embedded agent source to temp directory.
+	// The embedded FS has an "agent/" prefix; strip it so files land at the root.
+	agentFS, err := fs.Sub(agentSource, "agent")
+	if err != nil {
+		return "", fmt.Errorf("access embedded agent subtree: %w", err)
+	}
+	if err := extractEmbeddedFS(agentFS, tmpDir); err != nil {
+		return "", fmt.Errorf("extract embedded source: %w", err)
+	}
+
+	// Rewrite import path in cmd/syncgo-agent/main.go:
+	// The embedded source uses "github.com/winezer0/syncgo/syncer/agent" (parent module path),
+	// but in the standalone temp module the agent package is at the root.
+	// Replace with a short module-relative import.
+	rewriteImports(tmpDir)
+
+	// Generate standalone go.mod for the extracted source.
+	// The agent source is embedded without go.mod (to stay in the parent module),
+	// so we generate a minimal one here with only the go-rsync dependency.
+	if err := generateAgentGoMod(tmpDir); err != nil {
+		return "", fmt.Errorf("generate agent go.mod: %w", err)
+	}
+
+	// Run go mod tidy to resolve dependencies
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = tmpDir
+	tidyCmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := tidyCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("go mod tidy (embedded): %s\n%w", string(output), err)
+	}
+
+	// Build the agent binary from extracted source
 	tmpFile, err := os.CreateTemp("", "syncgo_linux_*")
 	if err != nil {
 		return "", err
@@ -376,8 +422,8 @@ func crossCompile(goArch, projectRoot string) (string, error) {
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
 
-	buildCmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", tmpPath, "./cmd/syncgo")
-	buildCmd.Dir = projectRoot
+	buildCmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", tmpPath, "./cmd/syncgo-agent")
+	buildCmd.Dir = tmpDir
 	buildCmd.Env = append(os.Environ(),
 		"GOOS=linux",
 		"GOARCH="+goArch,
@@ -387,39 +433,57 @@ func crossCompile(goArch, projectRoot string) (string, error) {
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
 		os.Remove(tmpPath)
-		return "", fmt.Errorf("go build: %s\n%w", string(output), err)
+		return "", fmt.Errorf("go build (embedded): %s\n%w", string(output), err)
 	}
 
 	return tmpPath, nil
 }
 
-// findProjectRoot locates the project root by searching for go.mod.
-func findProjectRoot() (string, error) {
-	// Try executable directory first
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Dir(exe)
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-	}
-	// Try current working directory and walk up
-	cwd, err := os.Getwd()
+// generateAgentGoMod writes a minimal go.mod for the agent sub-module.
+// The agent only depends on go-rsync, keeping the dependency tree minimal.
+func generateAgentGoMod(dir string) error {
+	const goMod = `module syncgo-agent
+
+go 1.25.0
+
+require github.com/henryborner/go-rsync v0.4.0
+`
+	return os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644)
+}
+
+// rewriteImports fixes import paths in cmd/syncgo-agent/main.go for standalone compilation.
+// In the embedded source, the import is "github.com/winezer0/syncgo/syncer/agent",
+// but in the temp module the agent package is at the root as package "agent".
+func rewriteImports(tmpDir string) {
+	mainGo := filepath.Join(tmpDir, "cmd", "syncgo-agent", "main.go")
+	data, err := os.ReadFile(mainGo)
 	if err != nil {
-		return "", err
+		return
 	}
-	dir := cwd
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
+	// Replace the full module import with the standalone module path
+	data = []byte(strings.ReplaceAll(string(data),
+		`"github.com/winezer0/syncgo/syncer/agent"`,
+		`"syncgo-agent"`,
+	))
+	os.WriteFile(mainGo, data, 0644)
+}
+
+// extractEmbeddedFS writes an embed.FS to a destination directory on disk.
+func extractEmbeddedFS(fsys fs.FS, dstDir string) error {
+	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
+		target := filepath.Join(dstDir, path)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
 		}
-		dir = parent
-	}
-	return cwd, nil
+		data, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return fmt.Errorf("read embedded %s: %w", path, err)
+		}
+		return os.WriteFile(target, data, 0644)
+	})
 }
 
 // remoteChmod sets file permissions on the remote.
