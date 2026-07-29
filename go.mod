@@ -5,9 +5,10 @@ go 1.26.4
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/henryborner/go-rsync v0.4.0
+	github.com/henryborner/go-rsync v0.4.1
 	github.com/pkg/sftp v1.13.10
 	github.com/spf13/cobra v1.10.2
+	github.com/winezer0/slogs v0.0.2
 	golang.org/x/crypto v0.53.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -35,7 +36,6 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/winezer0/slogs v0.0.2 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
