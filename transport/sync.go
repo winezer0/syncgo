@@ -509,7 +509,16 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	// Streaming match + streaming send: instructions are batched and
 	// written to stdin as they are discovered.  No full instruction list
 	// is held in memory.
-	eng := delta.NewMatchEngine(sig.BlockSize, algo)
+	eng, err := delta.NewMatchEngine(sig.BlockSize, algo)
+	if err != nil {
+		stdin.Close()
+		<-stderrDone
+		slogs.Warn("delta match engine init failed; full upload", "error", err, "path", info.Path)
+		if uploadErr := e.uploadFile(info, remotePath); uploadErr != nil {
+			return 0, 0, fmt.Errorf("fallback upload: %w", uploadErr)
+		}
+		return info.Size, 0, nil
+	}
 	eng.LoadSignature(sig)
 
 	// Wrap stdin to count actual wire bytes (includes match instruction

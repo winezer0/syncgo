@@ -75,7 +75,10 @@ func TestDeltaCost(t *testing.T) {
 	fmt.Printf("  ① Signature gen:  %v  (%d blocks × %d bytes)\n",
 		t1.Sub(t0).Round(time.Millisecond), len(sig.BlockSums), blockSize)
 
-	eng := delta.NewMatchEngine(blockSize, algo)
+	eng, err := delta.NewMatchEngine(blockSize, algo)
+	if err != nil {
+		t.Fatalf("match engine: %v", err)
+	}
 	eng.LoadSignature(sig)
 
 	t2 := time.Now()

@@ -71,7 +71,10 @@ func RunReceive(opts ReceiveOptions) error {
 		}
 	}
 	if sig == nil {
-		sig = delta.GenerateSignatureReader(f, fileSize, blockSize, opts.Algo)
+		sig, err = delta.GenerateSignatureReader(f, fileSize, blockSize, opts.Algo)
+		if err != nil {
+			return fmt.Errorf("generate signature: %w", err)
+		}
 		var buf bytes.Buffer
 		if err := delta.WireEncodeSignature(&buf, sig); err != nil {
 			return fmt.Errorf("encode signature: %w", err)
@@ -121,7 +124,11 @@ func RunReceive(opts ReceiveOptions) error {
 	for i, bs := range sig.BlockSums {
 		blockLens[i] = bs.Length
 	}
-	recon := delta.NewReconstructor(oldData, blockSize, opts.Algo, blockLens)
+	recon, err := delta.NewReconstructor(oldData, blockSize, opts.Algo, blockLens)
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("create reconstructor: %w", err)
+	}
 
 	err = delta.DecodeInstructionsStreamAll(os.Stdin, func(inst delta.MatchResult) error {
 		return recon.WriteInstruction(out, inst)
