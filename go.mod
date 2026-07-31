@@ -8,7 +8,7 @@ require (
 	github.com/henryborner/go-rsync v0.4.3
 	github.com/pkg/sftp v1.13.10
 	github.com/spf13/cobra v1.10.2
-	github.com/winezer0/slogs v0.0.2
+	github.com/winezer0/slogs v0.1.0
 	golang.org/x/crypto v0.53.0
 	gopkg.in/yaml.v3 v3.0.1
 )
