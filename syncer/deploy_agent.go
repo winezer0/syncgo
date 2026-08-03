@@ -481,7 +481,7 @@ func generateAgentGoMod(dir string) error {
 
 go 1.25.0
 
-require github.com/henryborner/go-rsync v0.4.3
+require github.com/henryborner/go-rsync v0.4.6
 `
 	return os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644)
 }
