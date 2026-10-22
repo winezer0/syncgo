@@ -2,9 +2,9 @@
 
 # syncgo — 跨平台增量文件同步工具
 
-**syncgo** 是一个跨平台（Windows / macOS / Linux）的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送；也支持 `--source`/`--target` 免配置直接同步。使用外部依赖 [go-rsync](https://github.com/henryborner/go-rsync)（v0.4.0，含 ARM64 NEON 优化）实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。纯 Go + Go 汇编实现，`CGO_ENABLED=0` 编译为完全静态二进制，无外部依赖。
+**syncgo** 是一个跨平台（Windows / macOS / Linux）的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送；也支持 `--source`/`--target` 免配置直接同步。使用外部依赖 [go-rsync](https://github.com/winezer0/go-rsync)（v0.4.7，含 ARM64 NEON 优化）实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。纯 Go + Go 汇编实现，`CGO_ENABLED=0` 编译为完全静态二进制，无外部依赖。
 
-> 原始项目请访问 [shuttle](https://github.com/henryborner/shuttle)
+> 依赖说明：上游原仓库 `henryborner/go-rsync` 与 `henryborner/shuttle` 已于 2026-10-22 被作者删除，本项目已切换至自维护分支 [winezer0/go-rsync](https://github.com/winezer0/go-rsync)（源码取自已发布标签 v0.4.7，经 sum.golang.org 透明日志校验，MIT 协议与原版权声明完整保留）。
 
 ```powershell
 syncgo                                # 双击启动 TUI

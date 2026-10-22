@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/go-rsync"
 	"github.com/winezer0/slogs"
 )
 

@@ -15,7 +15,7 @@ import (
 
 	"github.com/winezer0/syncgo/util"
 
-	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/go-rsync"
 )
 
 // TestModTimeTruncation verifies ModTime truncation fix

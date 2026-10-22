@@ -6,7 +6,7 @@ import (
 	"github.com/winezer0/syncgo/config"
 	"github.com/winezer0/syncgo/i18n"
 
-	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/go-rsync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

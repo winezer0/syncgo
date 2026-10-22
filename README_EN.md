@@ -2,9 +2,9 @@
 
 # syncgo — cross-platform rsync-style delta sync
 
-**syncgo** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push; or use `--source`/`--target` for config-free ad-hoc sync. Uses the external [go-rsync](https://github.com/henryborner/go-rsync) dependency (v0.4.0, with ARM64 NEON optimizations) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
+**syncgo** is a cross-platform (Windows / macOS / Linux) file sync tool. Define mappings in `syncd.yaml` — one command to push; or use `--source`/`--target` for config-free ad-hoc sync. Uses the external [go-rsync](https://github.com/winezer0/go-rsync) dependency (v0.4.7, with ARM64 NEON optimizations) implementing the rsync delta algorithm. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol). Pure Go + Go assembly, compiled with `CGO_ENABLED=0` into fully static binaries with no external dependencies.
 
-> Original project: [shuttle](https://github.com/henryborner/shuttle)
+> Dependency note: the upstream repos `henryborner/go-rsync` and `henryborner/shuttle` were deleted by their author on 2026-10-22. This project now depends on the maintained fork [winezer0/go-rsync](https://github.com/winezer0/go-rsync) (source taken from the published tag v0.4.7, verified against the sum.golang.org transparency log; MIT license and original copyright notice preserved).
 
 ```powershell
 syncgo                                # double-click to launch TUI

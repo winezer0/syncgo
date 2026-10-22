@@ -18,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/go-rsync"
 )
 
 // ReceiveOptions configures the receiver behavior.

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/henryborner/go-rsync"
+	"github.com/winezer0/go-rsync"
 	"golang.org/x/crypto/ssh"
 )
 
